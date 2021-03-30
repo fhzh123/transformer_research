@@ -2,18 +2,18 @@ import torch
 from torch.utils.data.dataset import Dataset
 
 class CustomDataset(Dataset):
-    def __init__(self, total_list, comment_list, title_list, max_len=300):
+    def __init__(self, total_list, comment_list, title_list, label_list, max_len=300):
         data = []
-        for total, comment, title in zip(total_list, comment_list, title_list):
-            if len(total) <= src_max_len and len(comment) <= len(title) <= max_len:
-                data.append((total, comment, title))
+        for total, comment, title, label in zip(total_list, comment_list, title_list, label_list):
+            if len(total) <= max_len and len(comment) <= max_len and len(title) <= max_len:
+                data.append((total, comment, title, label))
         
         self.data = tuple(data)
         self.num_data = len(self.data)
         
     def __getitem__(self, index):
-        text = self.data[index]
-        return text
+        total, comment, title, label = self.data[index]
+        return total, comment, title, label
     
     def __len__(self):
         return self.num_data
@@ -36,8 +36,25 @@ class PadCollate:
             sentences = sentences.view(-1, sentences_len)
             return sentences
 
-        input_sentences = zip(*batch)
-        return pack_sentence(input_sentences)
+        total, comment, title, label = zip(*batch)
+        return pack_sentence(total), pack_sentence(comment), pack_sentence(title), torch.LongTensor(label)
 
     def __call__(self, batch):
         return self.pad_collate(batch)
+
+class TestDataset(Dataset):
+    def __init__(self, total_list, comment_list, title_list, max_len=300):
+        data = []
+        for total, comment, title, label in zip(total_list, comment_list, title_list):
+            if len(total) <= src_max_len and len(comment) <= len(title) <= max_len:
+                data.append((total, comment, title))
+        
+        self.data = tuple(data)
+        self.num_data = len(self.data)
+        
+    def __getitem__(self, index):
+        total, comment, title = self.data[index]
+        return total, comment, title
+    
+    def __len__(self):
+        return self.num_data

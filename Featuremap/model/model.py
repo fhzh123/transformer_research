@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.modules.activation import MultiheadAttention
 
-from .embedding.TransformerEmbedding import TransformerEmbedding,
+from .embedding.TransformerEmbedding import TransformerEmbedding
 
 class Transformer(nn.Module):
     def __init__(self, vocab_num, pad_idx=0, bos_idx=1, eos_idx=2, 
@@ -17,15 +17,16 @@ class Transformer(nn.Module):
         self.pad_idx = pad_idx
         self.bos_idx = bos_idx
         self.eos_idx = eos_idx
+        self.max_len = max_len
         self.dropout = nn.Dropout(dropout)
 
-        self.transformer_embedding = TransformerEmbedding(src_vocab_num, d_model, d_embedding,
+        self.transformer_embedding = TransformerEmbedding(vocab_num, d_model, d_embedding,
                                         pad_idx=self.pad_idx, max_len=self.max_len)
 
         # Output model
-        self.output_linear = nn.Linear(d_model.d_embedding, bias=False)
+        self.output_linear = nn.Linear(d_model, d_embedding, bias=False)
         self.output_norm = nn.LayerNorm(d_embedding)
-        self.output_linear2 = nn.Linear(d_embedding, vocab_num, bias=False)
+        self.output_linear2 = nn.Linear(d_embedding, 3, bias=False)
 
         # Transformer model
         self_attn = MultiheadAttention(d_model, n_head, dropout=dropout)
@@ -33,15 +34,15 @@ class Transformer(nn.Module):
             TransformerEncoderLayer(d_model, self_attn, dim_feedforward,
                 activation='gelu', dropout=dropout) for i in range(n_layers)])
 
-    def forward(self, src_input_sentence, non_pad_position=None):
+    def forward(self, src_input_sentence):
         src_key_padding_mask = (src_input_sentence == self.pad_idx)
 
-        encoder_out = self.src_embedding(src_input_sentence).transpose(0, 1)
+        encoder_out = self.transformer_embedding(src_input_sentence).transpose(0, 1)
         for i in range(len(self.encoders)):
             encoder_out = self.encoders[i](encoder_out, src_key_padding_mask=src_key_padding_mask)
 
         encoder_out = self.output_norm(self.dropout(F.gelu(self.output_linear(encoder_out))))
-        encoder_out = self.output_linear2(encoder_out)
+        encoder_out = self.output_linear2(encoder_out).transpose(0, 1).contiguous()
         return encoder_out
 
 class TransformerEncoderLayer(nn.Module):

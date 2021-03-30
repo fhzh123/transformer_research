@@ -82,6 +82,13 @@ def preprocessing(args):
                           for text1, text2 in zip(test_indices, test_title_indices)]
 
     #===================================#
+    #==========Label processing=========#
+    #===================================#
+
+    train_label = [0 if x=='none' else 1 if x=='hate' else 2 for x in train['label']]
+    valid_label = [0 if x=='none' else 1 if x=='hate' else 2 for x in valid['label']]
+
+    #===================================#
     #==============Saving===============#
     #===================================#
 
@@ -117,8 +124,8 @@ def preprocessing(args):
             'train_total_indices': train_total_indices,
             'valid_total_indices': valid_total_indices,
             'test_total_indices': test_total_indices,
-            'train_label': train['label'],
-            'valid_label': valid['label'],
+            'train_label': train_label,
+            'valid_label': valid_label,
             'word2id': word2id,
             'id2word': {v: k for k, v in word2id.items()}
         }, f)

@@ -2,3 +2,4 @@ __pycache__/*
 .ipynb_checkpoints/*
 model/__pycache__/*
 model/embedding/__pycache__/*
+preprocessing/*

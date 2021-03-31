@@ -72,10 +72,11 @@ def training(args):
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
     # optimizer = Ralamb(params=filter(lambda p: p.requires_grad, model.parameters()),
     #                 lr=args.lr, weight_decay=args.w_decay)
-    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train'])*3, 
-                                    t_total=len(dataloader_dict['train'])*args.num_epochs)
+    # scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train'])*3, 
+    #                                 t_total=len(dataloader_dict['train'])*args.num_epochs)
     criterion = nn.CrossEntropyLoss(ignore_index=args.pad_idx)
-    model.to(device)
+    model = model.train()
+    model = model.to(device)
 
     # 2) Model resume
     start_epoch = 0
@@ -97,62 +98,51 @@ def training(args):
     # 2) Training start
     for e in range(start_epoch, args.num_epochs):
         start_time_e = time.time()
-        for phase in ['train', 'valid']:
-            if phase == 'train':
-                model.train()
-            if phase == 'valid':
-                print('Validation...')
-                model.eval()
-                val_acc = 0
-                val_loss = 0
-            for i, (total, comment, title, label) in enumerate(tqdm(dataloader_dict[phase])):
-                # Source, Target  setting
-                total = total.to(device)
-                comment = comment.to(device)
-                label = label.to(device)
-                
-                # Optimizer setting
-                optimizer.zero_grad()
 
-                # Model / Calculate loss
-                with torch.set_grad_enabled(phase == 'train'):
-                    output = model(total)
-                    output_cls_token = output[:,0]
-                    loss = criterion(output_cls_token, label)
-                    predicted = output_cls_token.max(dim=1)[1]
-                    acc = sum(predicted == label).item() / len(label)
-                    if phase == 'valid':
-                        val_loss += loss.item()
-                        val_acc += acc
-                # If phase train, then backward loss and step optimizer and scheduler
-                if phase == 'train':
-                    loss.backward()
-                    clip_grad_norm_(model.parameters(), args.grad_norm)
-                    optimizer.step()
-                    scheduler.step()
+        for i, (total, comment, title, label) in enumerate(tqdm(dataloader_dict['train'])):
+            # Source, Target  setting
+            total = total.to(device)
+            comment = comment.to(device)
+            label = label.to(device)
+            
+            # Optimizer setting
+            optimizer.zero_grad()
 
-                    # Print loss value only training
-                    if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
-                        total_loss = loss.item()
-                        print("[Epoch:%d][%d/%d] train_loss:%5.3f | train_acc:%5.3f | learning_rate:%3.8f | spend_time:%5.2fmin"
-                                % (e+1, i, len(dataloader_dict['train']), 
-                                total_loss, acc,
-                                optimizer.param_groups[0]['lr'], 
-                                (time.time() - start_time_e) / 60))
-                        freq = 0
-                    freq += 1
+            # Model / Calculate loss
+            output = model(total)
+            output_cls_token = output[:,0]
+            loss = criterion(output_cls_token, label)
+            predicted = output_cls_token.max(dim=1)[1]
+            acc = sum(predicted == label).item() / len(label)
 
-            # Finishing iteration
-            if phase == 'valid':
-                val_loss /= len(dataloader_dict['valid'])
-                val_acc /= len(dataloader_dict['valid'])
-                print("[Epoch:%d] val_loss:%5.3f | val_acc:%5.3f | spend_time:%5.2fmin"
-                        % (e+1, val_loss, val_acc,
+            # If phase train, then backward loss and step optimizer and scheduler
+            loss.backward()
+            # clip_grad_norm_(model.parameters(), args.grad_norm)
+            optimizer.step()
+            # scheduler.step()
+
+            # Print loss value only training
+            if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
+                total_loss = loss.item()
+                print("[Epoch:%d][%d/%d] train_loss:%5.3f | train_acc:%5.3f | learning_rate:%3.8f | spend_time:%5.2fmin"
+                        % (e+1, i, len(dataloader_dict['train']), 
+                        total_loss, acc,
+                        optimizer.param_groups[0]['lr'], 
                         (time.time() - start_time_e) / 60))
-                if not best_val_loss or val_loss < best_val_loss:
-                    print("[!] saving model...")
-                    if not os.path.exists(args.save_path):
-                        os.mkdir(args.save_path)
-                    torch.save(model.state_dict(), 
-                                os.path.join(args.save_path, f'model_{val_loss}.pt'))
-                    best_val_loss = val_loss
+                freq = 0
+            freq += 1
+
+            # # Finishing iteration
+            # if phase == 'valid':
+            #     val_loss /= len(dataloader_dict['valid'])
+            #     val_acc /= len(dataloader_dict['valid'])
+            #     print("[Epoch:%d] val_loss:%5.3f | val_acc:%5.3f | spend_time:%5.2fmin"
+            #             % (e+1, val_loss, val_acc,
+            #             (time.time() - start_time_e) / 60))
+            #     if not best_val_loss or val_loss < best_val_loss:
+            #         print("[!] saving model...")
+            #         if not os.path.exists(args.save_path):
+            #             os.mkdir(args.save_path)
+            #         torch.save(model.state_dict(), 
+            #                     os.path.join(args.save_path, f'model_{val_loss}.pt'))
+            #         best_val_loss = val_loss

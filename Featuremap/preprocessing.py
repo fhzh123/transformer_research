@@ -45,7 +45,7 @@ def preprocessing(args):
     # 2) SentencePiece model training
     spm.SentencePieceProcessor()
     spm.SentencePieceTrainer.Train(
-        f'--input={args.save_path}/input.txt --model_prefix={args.save_path}/m_model --model_type=bpe '
+        f'--input={args.save_path}/input.txt --model_prefix={args.save_path}/m_model --model_type=unigram '
         f'--vocab_size={args.vocab_size} --character_coverage=0.995 --split_by_whitespace=true '
         f'--pad_id={args.pad_idx} --unk_id={args.unk_idx} --bos_id={args.bos_idx} --eos_id={args.eos_idx} '
         f'--user_defined_symbols=[SEP],[P]')
@@ -74,12 +74,35 @@ def preprocessing(args):
     test_title_indices = [[args.bos_idx] + spm_.EncodeAsIds(text) + [args.eos_idx] for text in test_title]
 
     # 5-3) Total parsing
-    train_total_indices = [[args.bos_idx] + text1[1:] + [word2id['[SEP]']] + text2[:-1] + [args.eos_idx] \
-                           for text1, text2 in zip(train_indices, train_title_indices)]
-    valid_total_indices = [[args.bos_idx] + text1[1:] + [word2id['[SEP]']] + text2[:-1] + [args.eos_idx] \
-                           for text1, text2 in zip(valid_indices, valid_title_indices)]
-    test_total_indices = [[args.bos_idx] + text1[1:] + [word2id['[SEP]']] + text2[:-1] + [args.eos_idx] \
-                          for text1, text2 in zip(test_indices, test_title_indices)]
+    train_total_indices = [text1[:-1] + [word2id['[SEP]']] + text2[1:-1] + [word2id['[SEP]']] \
+                        for text1, text2 in zip(train_indices, train_title_indices)]
+    valid_total_indices = [text1[:-1] + [word2id['[SEP]']] + text2[1:-1] + [word2id['[SEP]']] \
+                        for text1, text2 in zip(valid_indices, valid_title_indices)]
+    test_total_indices = [text1[:-1] + [word2id['[SEP]']] + text2[1:-1] + [word2id['[SEP]']] \
+                        for text1, text2 in zip(test_indices, test_title_indices)]
+
+    #===================================#
+    #========Segment processing=========#
+    #===================================#
+
+    train_seg_list = list()
+    valid_seg_list = list()
+    test_seg_list = list()
+
+    for text in train_total_indices:
+        seg_a = [0 for x in range(len(text[:text.index(4)+1]))]
+        seg_b = [1 for x in range(len(text[text.index(4)+1:]))]
+        train_seg_list.append(seg_a+seg_b)
+
+    for text in valid_total_indices:
+        seg_a = [0 for x in range(len(text[:text.index(4)+1]))]
+        seg_b = [1 for x in range(len(text[text.index(4)+1:]))]
+        valid_seg_list.append(seg_a+seg_b)
+
+    for text in test_total_indices:
+        seg_a = [0 for x in range(len(text[:text.index(4)+1]))]
+        seg_b = [1 for x in range(len(text[text.index(4)+1:]))]
+        test_seg_list.append(seg_a+seg_b)
 
     #===================================#
     #==========Label processing=========#
@@ -87,6 +110,7 @@ def preprocessing(args):
 
     train_label = [0 if x=='none' else 1 if x=='hate' else 2 for x in train['label']]
     valid_label = [0 if x=='none' else 1 if x=='hate' else 2 for x in valid['label']]
+
 
     #===================================#
     #==============Saving===============#
@@ -124,6 +148,9 @@ def preprocessing(args):
             'train_total_indices': train_total_indices,
             'valid_total_indices': valid_total_indices,
             'test_total_indices': test_total_indices,
+            'train_seg_list': train_seg_list,
+            'valid_seg_list': valid_seg_list,
+            'test_seg_list': test_seg_list,
             'train_label': train_label,
             'valid_label': valid_label,
             'word2id': word2id,

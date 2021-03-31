@@ -43,7 +43,7 @@ if __name__=='__main__':
     parser.add_argument('--d_embedding', default=256, type=int, help='Embedding dimension; Default is 256')
     parser.add_argument('--n_head', default=12, type=int, help='Mutlihead count; Default is 12')
     parser.add_argument('--dim_feedforward', default=2048, type=int, help='Feedforward layer dimension; Default is 2048')
-    parser.add_argument('--n_layers', default=12, type=int, help='Layer count; Default is 12')
+    parser.add_argument('--n_layers', default=16, type=int, help='Layer count; Default is 16')
     # Training setting
     parser.add_argument('--num_epochs', default=30, type=int, help='Epoch count; Default is 30')
     parser.add_argument('--num_workers', default=8, type=int, help='Num CPU Workers; Default is 8')

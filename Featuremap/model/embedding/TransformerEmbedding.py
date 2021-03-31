@@ -13,7 +13,7 @@ class TransformerEmbedding(nn.Module):
     """
 
     def __init__(self, vocab_size, d_model, embed_size, pad_idx=0, max_len=512, 
-                 embedding_dropout=0.1, king_num=None):
+                 embedding_dropout=0.1):
         """
         :param vocab_size: total vocab size
         :param embed_size: embedding size of token embedding
@@ -23,15 +23,15 @@ class TransformerEmbedding(nn.Module):
         self.token = TokenEmbedding(vocab_size=vocab_size, embed_size=embed_size, pad_idx=pad_idx)
         self.linear_layer = nn.Linear(embed_size, d_model)
         self.position = PositionalEmbedding(d_model=embed_size, max_len=max_len)
+        self.segment = nn.Embedding(2, embed_size)
         self.norm = nn.LayerNorm(d_model)
         self.embedding_dropout = nn.Dropout(embedding_dropout)
 
-        self.king_embedding = None
-        if king_num is not None:
-            self.king_embedding = nn.Embedding(king_num, embed_size)
-
-    def forward(self, sequence):
+    def forward(self, sequence, sequence_segment=None):
         x = self.token(sequence)
         
-        x = self.embedding_dropout(x + self.position(sequence))
+        if sequence_segment:
+            x = self.embedding_dropout(x + self.position(sequence) + self.segment(sequence_segment))
+        else:
+            x = self.embedding_dropout(x + self.position(sequence))
         return self.norm(self.linear_layer(x))

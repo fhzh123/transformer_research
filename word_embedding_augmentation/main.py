@@ -4,6 +4,8 @@ import argparse
 
 # Import custom modules
 from preprocessing import preprocessing
+from reconstruction import reconstruction
+from pretraining import pretraining
 from train import training
 from test import testing
 
@@ -14,6 +16,13 @@ def main(args):
     # preprocessing
     if args.preprocessing:
         preprocessing(args)
+
+    # reconstruction
+    if args.reconstruction:
+        reconstruction(args)
+
+    if args.pretraining:
+        pretraining(args)
 
     # training
     if args.training:
@@ -29,6 +38,8 @@ def main(args):
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Parsing Method')
     parser.add_argument('--preprocessing', action='store_true')
+    parser.add_argument('--reconstruction', action='store_true')
+    parser.add_argument('--pretraining', action='store_true')
     parser.add_argument('--training', action='store_true')
     parser.add_argument('--testing', action='store_true')
     parser.add_argument('--resume', action='store_true')
@@ -63,6 +74,7 @@ if __name__=='__main__':
     parser.add_argument('--unlabeled_data_processing', action='store_true')
     parser.add_argument('--noise_augment', action='store_true')
     parser.add_argument('--mix_augment', action='store_true')
+    parser.add_argument('--split_ratio', default=0.2, type=float)
     # Print frequency
     parser.add_argument('--print_freq', default=100, type=int, help='Print training process frequency; Default is 100')
     args = parser.parse_args()

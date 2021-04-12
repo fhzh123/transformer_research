@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from .token import TokenEmbedding
+from .segment import SegmentEmbedding
 from .positional import PositionalEmbedding
 
 class TransformerEmbedding(nn.Module):
@@ -21,17 +22,18 @@ class TransformerEmbedding(nn.Module):
         """
         super().__init__()
         self.token = TokenEmbedding(vocab_size=vocab_size, embed_size=embed_size, pad_idx=pad_idx)
-        self.linear_layer = nn.Linear(embed_size, d_model)
         self.position = PositionalEmbedding(d_model=embed_size, max_len=max_len)
-        self.segment = nn.Embedding(2, embed_size)
+        self.segment = SegmentEmbedding(segment_size=3, embed_size=embed_size, pad_idx=pad_idx)
+        self.linear_layer = nn.Linear(embed_size, d_model)
         self.norm = nn.LayerNorm(d_model)
         self.embedding_dropout = nn.Dropout(embedding_dropout)
 
     def forward(self, sequence, sequence_segment=None):
         x = self.token(sequence)
         
-        if sequence_segment:
-            x = self.embedding_dropout(x + self.position(sequence) + self.segment(sequence_segment))
-        else:
+        if sequence_segment is None:
             x = self.embedding_dropout(x + self.position(sequence))
+        else:
+            x = self.embedding_dropout(x + self.position(sequence) + self.segment(sequence_segment))
+
         return self.norm(self.linear_layer(x))

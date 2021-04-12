@@ -13,7 +13,8 @@ class CustomDataset(Dataset):
         
     def __getitem__(self, index):
         total, comment, title, label = self.data[index]
-        return total, comment, title, label
+        segment = [1 for _ in comment] + [2 for _ in title[:-1]]
+        return total, segment, label
     
     def __len__(self):
         return self.num_data
@@ -36,8 +37,8 @@ class PadCollate:
             sentences = sentences.view(-1, sentences_len)
             return sentences
 
-        total, comment, title, label = zip(*batch)
-        return pack_sentence(total), pack_sentence(comment), pack_sentence(title), torch.LongTensor(label)
+        total, segment, label = zip(*batch)
+        return pack_sentence(total), pack_sentence(segment), torch.LongTensor(label)
 
     def __call__(self, batch):
         return self.pad_collate(batch)

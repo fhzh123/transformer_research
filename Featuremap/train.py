@@ -3,11 +3,13 @@ import os
 import time
 import pickle
 from tqdm import tqdm
+from sklearn.metrics import f1_score
 
 # Import PyTorch
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 
@@ -68,13 +70,14 @@ def training(args):
                         eos_idx=args.eos_idx, max_len=args.max_len, d_model=args.d_model, 
                         d_embedding=args.d_embedding, n_head=args.n_head, 
                         dim_feedforward=args.dim_feedforward, n_layers=args.n_layers, 
-                        dropout=args.dropout, device=device)
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-    # optimizer = Ralamb(params=filter(lambda p: p.requires_grad, model.parameters()),
-    #                 lr=args.lr, weight_decay=args.w_decay)
+                        dropout=args.dropout, embedding_dropout=args.embedding_dropout, 
+                        device=device)
+    # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    optimizer = Ralamb(params=filter(lambda p: p.requires_grad, model.parameters()),
+                    lr=args.lr, weight_decay=args.w_decay)
     # scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train'])*3, 
     #                                 t_total=len(dataloader_dict['train'])*args.num_epochs)
-    criterion = nn.CrossEntropyLoss(ignore_index=args.pad_idx)
+    criterion = nn.CrossEntropyLoss()
     model = model.train()
     model = model.to(device)
 
@@ -93,56 +96,77 @@ def training(args):
     #===================================#
 
     # 1) Pre-setting
-    best_val_loss = None
+    best_val_f1 = 0
 
     # 2) Training start
     for e in range(start_epoch, args.num_epochs):
         start_time_e = time.time()
+        for phase in ['train', 'valid']:
+            if phase == 'train':
+                model.train()
+            if phase == 'valid':
+                print('Validation start...')
+                model.eval()
+                val_loss = 0
+                val_f1 = 0
 
-        for i, (total, comment, title, label) in enumerate(tqdm(dataloader_dict['train'])):
-            # Source, Target  setting
-            total = total.to(device)
-            comment = comment.to(device)
-            label = label.to(device)
-            
-            # Optimizer setting
-            optimizer.zero_grad()
+            for i, (total, segment, label) in enumerate(dataloader_dict[phase]):
+                # Source, Target  setting
+                total = total.to(device)
+                segment = segment.to(device)
+                label = label.to(device)
+                
+                # Optimizer setting
+                optimizer.zero_grad()
 
-            # Model / Calculate loss
-            output = model(total)
-            output_cls_token = output[:,0]
-            loss = criterion(output_cls_token, label)
-            predicted = output_cls_token.max(dim=1)[1]
-            acc = sum(predicted == label).item() / len(label)
+                # Model / Calculate loss
+                with torch.set_grad_enabled(phase == 'train'):
+                    output = model(total, segment)
+                    output_cls_token = output[:,0]
+                    loss = F.cross_entropy(output_cls_token, label)
 
-            # If phase train, then backward loss and step optimizer and scheduler
-            loss.backward()
-            # clip_grad_norm_(model.parameters(), args.grad_norm)
-            optimizer.step()
-            # scheduler.step()
+                    # F1-Score calculate
+                    predicted = output_cls_token.max(dim=1)[1]
+                    f1_score_macro = round(f1_score(predicted.tolist(), label.tolist(), average='macro'), 2)
 
-            # Print loss value only training
-            if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
-                total_loss = loss.item()
-                print("[Epoch:%d][%d/%d] train_loss:%5.3f | train_acc:%5.3f | learning_rate:%3.8f | spend_time:%5.2fmin"
-                        % (e+1, i, len(dataloader_dict['train']), 
-                        total_loss, acc,
-                        optimizer.param_groups[0]['lr'], 
+                    # If phase train, then backward loss and step optimizer and scheduler
+                    if phase == 'train':
+                        loss.backward()
+                        # clip_grad_norm_(model.parameters(), args.grad_norm)
+                        optimizer.step()
+                        # scheduler.step()
+
+                        # Print loss value only training
+                        if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
+                            total_loss = loss.item()
+                            print("[Epoch:%d][%d/%d] train_loss:%5.3f | train_f1:%2.2f | learning_rate:%3.6f | spend_time:%3.2fmin"
+                                    % (e+1, i, len(dataloader_dict['train']), 
+                                    total_loss, f1_score_macro,
+                                    optimizer.param_groups[0]['lr'], 
+                                    (time.time() - start_time_e) / 60))
+                            freq = 0
+                        freq += 1
+                
+                    if phase == 'valid':
+                        val_loss += loss.item()
+                        val_f1 += f1_score_macro
+
+            # Finishing iteration
+            if phase == 'valid':
+                val_loss /= len(dataloader_dict['valid'])
+                val_f1 /= len(dataloader_dict['valid'])
+                print("[Epoch:%d] val_loss:%5.3f | val_f1:%2.2f | spend_time:%5.2fmin"
+                        % (e+1, val_loss, val_f1,
                         (time.time() - start_time_e) / 60))
-                freq = 0
-            freq += 1
+                if val_f1 > best_val_f1:
+                    print("[!] saving model...")
+                    if not os.path.exists(args.save_path):
+                        os.mkdir(args.save_path)
+                    torch.save(model.state_dict(), 
+                                os.path.join(args.save_path, f'model_testing.pt'))
+                    best_epoch = e
+                    best_val_f1 = val_f1
 
-            # # Finishing iteration
-            # if phase == 'valid':
-            #     val_loss /= len(dataloader_dict['valid'])
-            #     val_acc /= len(dataloader_dict['valid'])
-            #     print("[Epoch:%d] val_loss:%5.3f | val_acc:%5.3f | spend_time:%5.2fmin"
-            #             % (e+1, val_loss, val_acc,
-            #             (time.time() - start_time_e) / 60))
-            #     if not best_val_loss or val_loss < best_val_loss:
-            #         print("[!] saving model...")
-            #         if not os.path.exists(args.save_path):
-            #             os.mkdir(args.save_path)
-            #         torch.save(model.state_dict(), 
-            #                     os.path.join(args.save_path, f'model_{val_loss}.pt'))
-            #         best_val_loss = val_loss
+    # 3)
+    print(f'Best Epoch: {best_epoch}')
+    print(f'Best F1-Score: {round(best_val_f1, 2)}')

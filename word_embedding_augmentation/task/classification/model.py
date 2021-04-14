@@ -81,7 +81,7 @@ class kcBERT_custom(nn.Module):
                 # Add noise to word embedding
                 with torch.no_grad():
                     for comb_1, comb_2 in comb_:
-                        noise = (torch.rand(recon_feature[comb_1].size()) * 0.01).to(self.device)
+                        noise = (torch.rand(recon_feature[comb_1].size()) * 0.001).to(self.device)
                         emb1 = recon_feature[comb_1] + noise
                         recon_feature = torch.cat((recon_feature, (emb1).unsqueeze(0)))
                 out = self.bert_encoder(recon_feature, attention_mask=attention_mask)

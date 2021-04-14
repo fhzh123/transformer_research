@@ -12,6 +12,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 # Import custom modules
+from optimizer.learning_rate import WarmupLinearSchedule
 from task.pretrain.model import kcBERT_pretraining
 from task.pretrain.dataset import CustomDataset, PadCollate
 # Import Huggingface
@@ -73,6 +74,8 @@ def pretraining(args):
 
     # 2) Optimizer setting
     optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
+    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train']), 
+                                    t_total=len(dataloader_dict['train'])*args.num_epochs)
 
     # 2) Model resume
     start_epoch = 0
@@ -125,6 +128,7 @@ def pretraining(args):
                         total_loss.backward()
                         clip_grad_norm_(model.parameters(), 5)
                         optimizer.step()
+                        scheduler.step()
 
                         # Print loss value only training
                         if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
@@ -137,7 +141,7 @@ def pretraining(args):
 
                 if phase == 'valid':
                     with torch.no_grad():
-                        pred = model(src_input_sentence=text)
+                        pred = model(src_input_sentence=masking_text, src_segment=segment)
                     loss = F.cross_entropy(pred, label.contiguous())
                     val_mlm_loss += mlm_loss.item()
                     val_nsp_loss += nsp_loss.item()

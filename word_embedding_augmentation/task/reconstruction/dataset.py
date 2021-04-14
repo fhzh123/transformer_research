@@ -13,10 +13,12 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         comment, title = self.data[index]
         total = comment + title[1:]
-        return total
+        segment = [0 for _ in comment] + [1 for _ in title[:-1]]
+        return total, segment
     
     def __len__(self):
-        return self.num_data
+        # return self.num_data
+        return 100000 # For short training
 
 class PadCollate:
     def __init__(self, pad_index=0, dim=0):
@@ -36,8 +38,8 @@ class PadCollate:
             sentences = sentences.view(-1, sentences_len)
             return sentences
         
-        total = batch
-        return pack_sentence(total)
+        total, segment = zip(*batch)
+        return pack_sentence(total), pack_sentence(segment)
         
     def __call__(self, batch):
         return self.pad_collate(batch)

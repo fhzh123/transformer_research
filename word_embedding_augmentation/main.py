@@ -4,18 +4,18 @@ import argparse
 
 # Import custom modules
 from preprocessing import preprocessing
-from reconstruction import reconstruction
-from pretraining import pretraining
-from train import training
-from test import testing
+from task.reconstruction.reconstruction import reconstruction
+from task.pretrain.pretrain import pretraining
+from task.classification.train import training
+# from test import testing
 
 def main(args):
     # Time setting
     total_start_time = time.time()
 
     # preprocessing
-    if args.preprocessing:
-        preprocessing(args)
+    # if args.preprocessing:
+    #     preprocessing(args)
 
     # reconstruction
     if args.reconstruction:
@@ -29,8 +29,8 @@ def main(args):
         training(args)
 
     # testing
-    if args.testing:
-        testing(args)
+    # if args.testing:
+    #     testing(args)
 
     # Time calculate
     print(f'Done! ; {round((time.time()-total_start_time)/60, 3)}min spend')
@@ -51,7 +51,7 @@ if __name__=='__main__':
     parser.add_argument('--save_path', default='/HDD/kyohoon/model_checkpoint/hate_speech/', type=str,
                         help='Model checkpoint file path')
     # Preprocessing setting
-    parser.add_argument('--vocab_size', default=8000, type=int, help='Vocabulary size; Default is 8000')
+    parser.add_argument('--vocab_size', default=30000, type=int, help='Vocabulary size; Default is 30000')
     parser.add_argument('--max_len', default=150, type=int, help='Max Length of Source Sentence; Default is 150')
     # Model setting
     parser.add_argument('--d_model', default=768, type=int, help='Model dimension; Default is 768')
@@ -75,6 +75,7 @@ if __name__=='__main__':
     parser.add_argument('--noise_augment', action='store_true')
     parser.add_argument('--mix_augment', action='store_true')
     parser.add_argument('--split_ratio', default=0.2, type=float)
+    parser.add_argument('--reconstruction_feature_use', action='store_true')
     # Print frequency
     parser.add_argument('--print_freq', default=100, type=int, help='Print training process frequency; Default is 100')
     args = parser.parse_args()

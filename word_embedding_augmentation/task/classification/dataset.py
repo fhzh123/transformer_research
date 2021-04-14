@@ -35,6 +35,48 @@ class PadCollate:
         self.isTest = isTest
 
     def pad_collate(self, batch):
+
+        def random_five_insert(vec, pad_size, max_len):
+            vec_len = len(vec)
+            i = 0
+            while True:
+                p = random.random()
+                if i == 0:
+                    i += 1
+                    continue
+                elif i == (max_len-1):
+                    rest_tensor = torch.LongTensor()
+                    pp = random.random()
+                    for ii in range(pad_size[0]):
+                        if 0<=pp<0.2:
+                            vec = torch.cat([vec[:i+1], torch.LongTensor([30001]), vec[i+1:]], 0)
+                        if 0.2<=pp<0.4:
+                            vec = torch.cat([vec[:i+1], torch.LongTensor([30002]), vec[i+1:]], 0)
+                        if 0.4<=pp<0.6:
+                            vec = torch.cat([vec[:i+1], torch.LongTensor([30003]), vec[i+1:]], 0)
+                        if 0.6<=pp<0.8:
+                            vec = torch.cat([vec[:i+1], torch.LongTensor([30004]), vec[i+1:]], 0)
+                        if 0.8<=pp<=1:
+                            vec = torch.cat([vec[:i+1], torch.LongTensor([30005]), vec[i+1:]], 0)
+                    break
+                elif p >= 0.5:
+                    i += 1
+                    continue
+                else:
+                    pad_size[0] -= 1
+                    if 0<=p<0.1:
+                        vec = torch.cat([vec[:i], torch.LongTensor([30001]), vec[i:]], 0)
+                    if 0.1<=p<0.2:
+                        vec = torch.cat([vec[:i], torch.LongTensor([30002]), vec[i:]], 0)
+                    if 0.2<=p<0.3:
+                        vec = torch.cat([vec[:i], torch.LongTensor([30003]), vec[i:]], 0)
+                    if 0.3<=p<0.4:
+                        vec = torch.cat([vec[:i], torch.LongTensor([30004]), vec[i:]], 0)
+                    if 0.4<=p<0.5:
+                        vec = torch.cat([vec[:i], torch.LongTensor([30005]), vec[i:]], 0)
+                    i += 2
+            return vec
+
         def pad_tensor(vec, max_len, dim):
             pad_size = list(vec.shape)
             pad_size[dim] = max_len - vec.size(dim)

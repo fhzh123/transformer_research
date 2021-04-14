@@ -59,8 +59,10 @@ def training(args):
 
     # 1) Model initiating
     print("Instantiating models...")
-    model = kcBERT_custom(num_labels=3, noise_augment=args.noise_augment, mix_augment=args.mix_augment, 
-                          augment_ratio=args.augment_ratio, device=device)
+    model = kcBERT_custom(args, num_labels=3, noise_augment=args.noise_augment, 
+                          mix_augment=args.mix_augment, augment_ratio=args.augment_ratio,
+                          reconstruction_feature_use=args.reconstruction_feature_use,
+                          device=device)
     model = model.train()
     model = model.to(device)
 

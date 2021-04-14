@@ -12,12 +12,13 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 # Import custom modules
-from task.reconstruction.model import kcBERT_reconstruct
-from task.reconstruction.dataset import CustomDataset, PadCollate
+from optimizer.learning_rate import WarmupLinearSchedule
+from task.pretrain.model import kcBERT_pretraining
+from task.pretrain.dataset import CustomDataset, PadCollate
 # Import Huggingface
 from transformers import AdamW
 
-def reconstruction(args):
+def pretraining(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     random.seed(42)
 
@@ -66,12 +67,15 @@ def reconstruction(args):
 
     # 1) Model initiating
     print("Instantiating models...")
-    model = kcBERT_reconstruct(vocab_size=30000)
+    model = kcBERT_pretraining(vocab_size=30000)
     model = model.train()
     model = model.to(device)
+    print('Done!')
 
     # 2) Optimizer setting
     optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
+    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train']), 
+                                    t_total=len(dataloader_dict['train'])*args.num_epochs)
 
     # 2) Model resume
     start_epoch = 0
@@ -98,57 +102,70 @@ def reconstruction(args):
                 model.train()
             if phase == 'valid':
                 print('Validation start...')
-                val_loss = 0
-                val_acc = 0
+                val_mlm_loss = 0
+                val_nsp_loss = 0
                 model.eval()
-            for i, (text, segment) in enumerate(tqdm(dataloader_dict[phase])):
-                # Optimizer setting
-                optimizer.zero_grad()
+            for i, (masking_text, segment, text, nsp_label) in enumerate(tqdm(dataloader_dict[phase])):
 
                 # Input, output setting
-                text = text.to(device)
+                masking_text = masking_text.to(device)
+                masking_position = masking_text==4
                 segment = segment.to(device)
-                label = text[text != 0]
+                mlm_label = text[masking_position].to(device)
+                nsp_label = nsp_label.to(device)
 
                 if phase == 'train':
                     with torch.set_grad_enabled(True):
-                        pred = model(src_input_sentence=text, src_segment=segment)
-                        loss = F.cross_entropy(pred, label.contiguous(), ignore_index=0)
+                        mlm_logit, nsp_logit = model(src_input_sentence=masking_text, src_segment=segment)
 
-                        # Loss backpropagation
-                        loss.backward()
+                        # Optimizer setting
+                        optimizer.zero_grad()
+
+                        # 
+                        mlm_loss = F.cross_entropy(mlm_logit[masking_position], mlm_label)
+                        nsp_loss = F.cross_entropy(nsp_logit, nsp_label)
+                        total_loss = mlm_loss + nsp_loss
+                        total_loss.backward()
                         clip_grad_norm_(model.parameters(), 5)
                         optimizer.step()
+                        scheduler.step()
 
                         # Print loss value only training
                         if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
-                            acc = (pred.max(dim=1)[1] == label).sum() / len(label)
-                            print("[Epoch:%d][%d/%d] train_loss:%5.3f  | train_acc:%5.3f | learning_rate:%3.6f | spend_time:%3.2fmin"
+                            print("[Epoch:%d][%d/%d] train_mlm_loss:%3.3f  | train_nsp_loss:%3.3f | learning_rate:%3.6f | spend_time:%3.2fmin"
                                     % (epoch+1, i, len(dataloader_dict['train']), 
-                                    loss.item(), acc, optimizer.param_groups[0]['lr'], 
+                                    mlm_loss.item(), nsp_loss.item(), optimizer.param_groups[0]['lr'], 
                                     (time.time() - start_time_e) / 60))
                             freq = 0
                         freq += 1
 
                 if phase == 'valid':
                     with torch.no_grad():
-                        pred = model(src_input_sentence=text, src_segment=segment)
+                        pred = model(src_input_sentence=masking_text, src_segment=segment)
                     loss = F.cross_entropy(pred, label.contiguous())
-                    val_loss += loss.item()
-                    val_acc += (pred.max(dim=1)[1] == label).sum() / len(label)
+                    val_mlm_loss += mlm_loss.item()
+                    val_nsp_loss += nsp_loss.item()
+                    val_mlm_acc += (mlm_logit.max(dim=1)[1] == label).sum() / len(label)
+                    val_nsp_acc += (nsp_logit.max(dim=1)[1] == label).sum() / len(label)
 
             if phase == 'valid':
-                val_loss /= len(dataloader_dict[phase])
-                val_acc /= len(dataloader_dict[phase])
-                print(f'Validation Loss: {val_loss}')
-                print(f'Validation Accuracy: {val_acc}')
+                val_mlm_loss /= len(dataloader_dict[phase])
+                val_nsp_loss /= len(dataloader_dict[phase])
+                val_mlm_acc /= len(dataloader_dict[phase])
+                val_nsp_acc /= len(dataloader_dict[phase])
+                print(f'Validation MLM Loss: {val_mlm_loss}')
+                print(f'Validation MLM Accuracy: {val_nsp_loss}')
+                print(f'Validation MLM Loss: {val_mlm_acc}')
+                print(f'Validation MLM Accuracy: {val_nsp_acc}')
+                val_acc = (val_mlm_acc + val_nsp_acc)/2
                 if val_acc > best_val_acc:
                     print('Checkpoint saving...')
                     torch.save({
                         'epoch': epoch,
                         'model': model.state_dict(),
                         'optimizer': optimizer.state_dict(),
-                    }, 'checkpoint_testing4.pth.tar')
+                        'scheduler': scheduler.state_dict()
+                    }, f'pretrain_bert.pth.tar')
                     best_val_acc = val_acc
                     best_epoch = epoch
 

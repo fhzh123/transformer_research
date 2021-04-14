@@ -7,7 +7,7 @@ from preprocessing import preprocessing
 from task.reconstruction.reconstruction import reconstruction
 from task.pretrain.pretrain import pretraining
 from task.classification.train import training
-# from test import testing
+from test import testing
 
 def main(args):
     # Time setting
@@ -37,9 +37,10 @@ def main(args):
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Parsing Method')
+    # Task setting
     parser.add_argument('--preprocessing', action='store_true')
-    parser.add_argument('--reconstruction', action='store_true')
     parser.add_argument('--pretraining', action='store_true')
+    parser.add_argument('--reconstruction', action='store_true')
     parser.add_argument('--training', action='store_true')
     parser.add_argument('--testing', action='store_true')
     parser.add_argument('--resume', action='store_true')
@@ -53,12 +54,6 @@ if __name__=='__main__':
     # Preprocessing setting
     parser.add_argument('--vocab_size', default=30000, type=int, help='Vocabulary size; Default is 30000')
     parser.add_argument('--max_len', default=150, type=int, help='Max Length of Source Sentence; Default is 150')
-    # Model setting
-    parser.add_argument('--d_model', default=768, type=int, help='Model dimension; Default is 768')
-    parser.add_argument('--d_embedding', default=256, type=int, help='Embedding dimension; Default is 256')
-    parser.add_argument('--n_head', default=12, type=int, help='Mutlihead count; Default is 12')
-    parser.add_argument('--dim_feedforward', default=2048, type=int, help='Feedforward layer dimension; Default is 2048')
-    parser.add_argument('--n_layers', default=8, type=int, help='Layer count; Default is 8')
     # Training setting
     parser.add_argument('--num_epochs', default=10, type=int, help='Epoch count; Default is 10')
     parser.add_argument('--num_workers', default=8, type=int, help='Num CPU Workers; Default is 8')

@@ -56,7 +56,9 @@ def preprocessing(args):
         with open(os.path.join(args.preprocessing_path, 'unlabeld.txt'),'w') as f:
             for i in range(len(unlabel_title)):
                 f.write(unlabel_title.tolist()[i])
+                f.write('\n')
                 f.write(unlabel_comments.tolist()[i])
+                f.write('\n')
         tokenizer.train([os.path.join(args.preprocessing_path, 'unlabeld.txt')], 
                         vocab_size=args.vocab_size, limit_alphabet=args.limit_alphabet)
         tokenizer.save_model(args.preprocessing_path)

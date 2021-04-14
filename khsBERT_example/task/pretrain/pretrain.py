@@ -141,8 +141,9 @@ def pretraining(args):
 
                 if phase == 'valid':
                     with torch.no_grad():
-                        pred = model(src_input_sentence=masking_text, src_segment=segment)
-                    loss = F.cross_entropy(pred, label.contiguous())
+                        mlm_logit, nsp_logit = model(src_input_sentence=masking_text, src_segment=segment)
+                        mlm_loss = F.cross_entropy(mlm_logit[masking_position], mlm_label)
+                        nsp_loss = F.cross_entropy(nsp_logit, nsp_label)
                     val_mlm_loss += mlm_loss.item()
                     val_nsp_loss += nsp_loss.item()
                     val_mlm_acc += (mlm_logit.max(dim=1)[1] == label).sum() / len(label)

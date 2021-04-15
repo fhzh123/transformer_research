@@ -104,6 +104,8 @@ def pretraining(args):
                 print('Validation start...')
                 val_mlm_loss = 0
                 val_nsp_loss = 0
+                val_mlm_acc = 0
+                val_nsp_acc = 0
                 model.eval()
             for i, (masking_text, segment, text, nsp_label) in enumerate(tqdm(dataloader_dict[phase])):
 
@@ -122,7 +124,8 @@ def pretraining(args):
                         optimizer.zero_grad()
 
                         # 
-                        mlm_loss = F.cross_entropy(mlm_logit[masking_position], mlm_label)
+                        mlm_p = mlm_logit[masking_position].log_softmax(dim=-1)
+                        mlm_loss = F.cross_entropy(mlm_p, mlm_label)
                         nsp_loss = F.cross_entropy(nsp_logit, nsp_label)
                         total_loss = mlm_loss + nsp_loss
                         total_loss.backward()
@@ -146,8 +149,8 @@ def pretraining(args):
                         nsp_loss = F.cross_entropy(nsp_logit, nsp_label)
                     val_mlm_loss += mlm_loss.item()
                     val_nsp_loss += nsp_loss.item()
-                    val_mlm_acc += (mlm_logit.max(dim=1)[1] == label).sum() / len(label)
-                    val_nsp_acc += (nsp_logit.max(dim=1)[1] == label).sum() / len(label)
+                    val_mlm_acc += (mlm_logit[masking_position].max(dim=1)[1] == mlm_label).sum() / len(mlm_label)
+                    val_nsp_acc += (nsp_logit.max(dim=1)[1] == nsp_label).sum() / len(nsp_label)
 
             if phase == 'valid':
                 val_mlm_loss /= len(dataloader_dict[phase])
@@ -155,9 +158,9 @@ def pretraining(args):
                 val_mlm_acc /= len(dataloader_dict[phase])
                 val_nsp_acc /= len(dataloader_dict[phase])
                 print(f'Validation MLM Loss: {val_mlm_loss}')
-                print(f'Validation MLM Accuracy: {val_nsp_loss}')
-                print(f'Validation MLM Loss: {val_mlm_acc}')
-                print(f'Validation MLM Accuracy: {val_nsp_acc}')
+                print(f'Validation MLM Accuracy: {val_mlm_acc}')
+                print(f'Validation NSP Loss: {val_nsp_loss}')
+                print(f'Validation NSP Accuracy: {val_nsp_acc}')
                 val_acc = (val_mlm_acc + val_nsp_acc)/2
                 if val_acc > best_val_acc:
                     print('Checkpoint saving...')

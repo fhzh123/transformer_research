@@ -7,6 +7,7 @@ BERT pretrained by 'Korean Hate Speech Detection' (https://www.kaggle.com/c/kore
 - Need to refactoring
 - Need to arguments re-arange
 - Need to data-free code (Now only for Korean Hate Speech; KHS)
+- Need to Optimizer & Learning rate scheduler setting
 
 ## P-Transformer
 ![Transformer_to_PTransformer](./PTransformer/img/Transformer_to_PTransformer.png)

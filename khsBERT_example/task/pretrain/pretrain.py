@@ -3,7 +3,6 @@ import os
 import time
 import pickle
 import random
-from tqdm import tqdm
 # Import PyTorch
 import torch
 import torch.nn as nn
@@ -74,7 +73,7 @@ def pretraining(args):
 
     # 2) Optimizer setting
     optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
-    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train']), 
+    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=int(len(dataloader_dict['train'])/2), 
                                     t_total=len(dataloader_dict['train'])*args.num_epochs)
 
     # 2) Model resume
@@ -107,7 +106,7 @@ def pretraining(args):
                 val_mlm_acc = 0
                 val_nsp_acc = 0
                 model.eval()
-            for i, (masking_text, segment, text, nsp_label) in enumerate(tqdm(dataloader_dict[phase])):
+            for i, (masking_text, segment, text, nsp_label) in enumerate(dataloader_dict[phase]):
 
                 # Input, output setting
                 masking_text = masking_text.to(device)

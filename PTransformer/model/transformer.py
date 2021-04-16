@@ -9,7 +9,8 @@ from .modules.layers import EncoderLayer, DecoderLayer
 class Transformer(nn.Module):
     def __init__(self, src_vocab_num, trg_vocab_num, pad_idx=0, bos_idx=1, eos_idx=2, 
                  src_max_len=300, trg_max_len=300, d_model=512, d_embedding=256, 
-                 n_head=8, d_k=64, d_v=64, dim_feedforward=2048, dropout=0.1, 
+                 n_head=8, d_k=64, d_v=64, dim_feedforward=2048, 
+                 dropout=0.1, embedding_dropout=0.1,
                  n_common_layers=6, n_encoder_layers=6, n_decoder_layers=6, 
                  trg_emb_prj_weight_sharing=True, emb_src_trg_weight_sharing=False,
                  parallel=True, device=None):
@@ -28,15 +29,15 @@ class Transformer(nn.Module):
 
         # Source embedding part
         self.src_embedding = TransformerEmbedding(src_vocab_num, d_model, d_embedding, 
-                                pad_idx=self.pad_idx, max_len=self.src_max_len,
-                                embedding_dropout=embedding_dropout, dropout=dropout)
+                                pad_idx=self.pad_idx, max_len=src_max_len,
+                                embedding_dropout=embedding_dropout)
         self.encoder_norms = nn.ModuleList([
             nn.LayerNorm(d_model, eps=1e-6) for _ in range(self.n_common_layers)])
         
         # Target embedding part
         self.trg_embedding = TransformerEmbedding(trg_vocab_num, d_model, d_embedding,
-                                pad_idx=self.pad_idx, max_len=self.trg_max_len, 
-                                embedding_dropout=embedding_dropout, dropout=dropout, king_num=None)
+                                pad_idx=self.pad_idx, max_len=trg_max_len, 
+                                embedding_dropout=embedding_dropout)
         self.trg_output_linear = nn.Linear(d_model, d_embedding, bias=False)
         self.trg_output_norm = nn.LayerNorm(d_embedding)
         self.trg_output_linear2 = nn.Linear(d_embedding, trg_vocab_num, bias=False)
@@ -48,7 +49,7 @@ class Transformer(nn.Module):
 
         # Decoder
         self.decoder_layers = nn.ModuleList([
-            DecoderLayer(d_model, d_inner, n_head, d_k, d_v, 
+            DecoderLayer(d_model, dim_feedforward, n_head, d_k, d_v, 
                          dropout=dropout) for _ in range(n_decoder_layers)])
 
         self.x_logit_scale = 1.
@@ -66,8 +67,8 @@ class Transformer(nn.Module):
         # trg_mask = get_pad_mask(trg_seq, self.trg_pad_idx) & get_subsequent_mask(trg_seq)
         
         # Embedding
-        enc_output = self.TransformerEmbedding(src_seq)
-        dec_output = self.TransformerEmbedding(trg_seq)
+        enc_output = self.src_embedding(src_seq)
+        dec_output = self.trg_embedding(trg_seq)
 
         # P-Transformer
         if self.parallel:

@@ -3,8 +3,11 @@ import pickle
 from time import time
 # Import PyTorch
 import torch
+from torch import nn
 from torch.utils.data import DataLoader
+from torch.nn.utils import clip_grad_norm_
 # Import custom modules
+from dataset import CustomDataset, PadCollate
 from model.transformer import Transformer
 from optimizer.optimizer import Ralamb
 from optimizer.scheduler import WarmupLinearSchedule
@@ -18,7 +21,7 @@ def training(args):
 
     # 1) Data open
     print('Data Load & Setting!')
-    with open(os.path.join(args.preprocess_path, 'unlabeled_processed.pkl'), 'rb') as f:
+    with open(os.path.join(args.preprocess_path, 'processed.pkl'), 'rb') as f:
         data_ = pickle.load(f)
         train_src_indices = data_['train_src_indices']
         valid_src_indices = data_['valid_src_indices']
@@ -66,20 +69,92 @@ def training(args):
     model = model.to(device)
 
     # 2) Optimizer & Learning rate scheduler setting
-    optimizer = Ralamb(transformer.parameters(), lr=opt.max_lr, weight_decay=opt.weight_decay)
-    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train'])*args.n_warmup_epochs, 
+    optimizer = Ralamb(model.parameters(), lr=args.max_lr, weight_decay=args.w_decay)
+    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train']), 
                     t_total=len(dataloader_dict['train'])*args.num_epochs)
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
 
     # 3) Model resume
     start_epoch = 0
-    if args.resume:
-        checkpoint = torch.load(os.path.join(args.save_path, 'checkpoint.pth.tar'))
-        start_epoch = checkpoint['epoch'] + 1
-        model.load_state_dict(checkpoint['model'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        scheduler.load_state_dict(checkpoint['scheduler'])
-        del checkpoint
+    # if args.resume:
+    #     checkpoint = torch.load(os.path.join(args.save_path, 'checkpoint.pth.tar'))
+    #     start_epoch = checkpoint['epoch'] + 1
+    #     model.load_state_dict(checkpoint['model'])
+    #     optimizer.load_state_dict(checkpoint['optimizer'])
+    #     scheduler.load_state_dict(checkpoint['scheduler'])
+    #     del checkpoint
 
     #===================================#
     #=========Model Train Start=========#
     #===================================#
+
+    best_val_acc = 0
+
+    print('Train start!')
+
+    for epoch in range(start_epoch, args.num_epochs):
+        start_time_e = time()
+        for phase in ['train', 'valid']:
+            if phase == 'train':
+                model.train()
+            if phase == 'valid':
+                print('Validation start...')
+                val_loss = 0
+                val_acc = 0
+                model.eval()
+            for i, (src, trg) in enumerate(dataloader_dict[phase]):
+
+                # Input, output setting
+                src = src.to(device)
+                trg = trg.to(device)
+
+                if phase == 'train':
+                    with torch.set_grad_enabled(True):
+                        seq_logit = model(src, trg)
+
+                        # Optimizer setting
+                        optimizer.zero_grad()
+
+                        # Loss calculate
+                        loss = criterion(seq_logit, trg.view(-1))
+                        loss.backward()
+                        clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+                        optimizer.step()
+                        scheduler.step()
+
+                        # Print loss value only training
+                        if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
+                            acc = (seq_logit.max(dim=1)[1] == trg.view(-1)).sum() / len(trg.view(-1))
+                            print("[Epoch:%d][%d/%d] train_loss:%3.3f  | train_acc:%3.3f | learning_rate:%3.6f | spend_time:%3.2fmin"
+                                    % (epoch+1, i, len(dataloader_dict['train']), 
+                                    loss.item(), acc, optimizer.param_groups[0]['lr'], 
+                                    (time() - start_time_e) / 60))
+                            freq = 0
+                        freq += 1
+
+                if phase == 'valid':
+                    with torch.no_grad():
+                        seq_logit = model(src, trg)
+                        loss = criterion(seq_logit, trg.view(-1))
+                    val_loss += loss.item()
+                    val_acc += (seq_logit.max(dim=1)[1] == trg.view(-1)).sum() / len(trg.view(-1))
+
+            if phase == 'valid':
+                val_loss /= len(dataloader_dict[phase])
+                val_acc /= len(dataloader_dict[phase])
+                print(f'Validation Loss: {val_loss}')
+                print(f'Validation Accuracy: {val_acc}')
+                if val_acc > best_val_acc:
+                    print('Checkpoint saving...')
+                    torch.save({
+                        'epoch': epoch,
+                        'model': model.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'scheduler': scheduler.state_dict()
+                    }, f'transformer_testing.pth.tar')
+                    best_val_acc = val_acc
+                    best_epoch = epoch
+
+    # 3) Print results
+    print(f'Best Epoch: {best_epoch}')
+    print(f'Best Accuracy: {round(best_val_acc.item(), 2)}')

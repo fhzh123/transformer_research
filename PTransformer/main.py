@@ -18,9 +18,8 @@ def main(args):
     if args.training:
         training(args)
 
-
     # Time calculate
-    print(f'Done! ; {round((time.time()-total_start_time)/60, 3)}min spend')
+    print(f'Done! ; {round((time()-total_start_time)/60, 3)}min spend')
 
 
 if __name__=='__main__':
@@ -28,8 +27,9 @@ if __name__=='__main__':
     # Task setting
     parser.add_argument('--preprocessing', action='store_true')
     parser.add_argument('--training', action='store_true')
+    parser.add_argument('--resume', action='store_true')
     # Path setting
-    parser.add_argument('--data_path', default='/HDD/dataset/korean-hate-speech-detection/', type=str,
+    parser.add_argument('--data_path', default='/HDD/kyohoon/acl_workshop', type=str,
                         help='Original data path')
     parser.add_argument('--preprocess_path', default='./preprocessing', type=str,
                         help='Preprocessed data  file path')
@@ -38,31 +38,35 @@ if __name__=='__main__':
     # Preprocessing setting
     parser.add_argument('--sentencepiece_model', default='unigram', choices=['unigram', 'bpe', 'word', 'char'],
                         help="Google's SentencePiece model type; Default is unigram")
-    parser.add_argument('--src_vocab_size', default=30000, type=int, 
-                        help='Source language vocabulary size; Default is 30000')
-    parser.add_argument('--trg_vocab_size', default=30000, type=int, 
-                        help='Target language vocabulary size; Default is 30000')
+    parser.add_argument('--src_vocab_size', default=8000, type=int, 
+                        help='Source language vocabulary size; Default is 8000')
+    parser.add_argument('--trg_vocab_size', default=8000, type=int, 
+                        help='Target language vocabulary size; Default is 8000')
     parser.add_argument('--pad_id', default=0, type=int,
                         help='Padding token index; Default is 0')
-    parser.add_argument('--unk_id', default=0, type=int,
+    parser.add_argument('--unk_id', default=3, type=int,
                         help='Unknown token index; Default is 3')
-    parser.add_argument('--bos_id', default=0, type=int,
-                        help='Padding token index; Default is 0')
-    parser.add_argument('--eos_id', default=0, type=int,
-                        help='Padding token index; Default is 0')
+    parser.add_argument('--bos_id', default=1, type=int,
+                        help='Padding token index; Default is 1')
+    parser.add_argument('--eos_id', default=2, type=int,
+                        help='Padding token index; Default is 2')
     # Training setting
     parser.add_argument('--min_len', default=4, type=int,
                         help='Minimum length of sequences; Default is 4')
-    parser.add_argument('--src_max_len', default=0, type=int,
+    parser.add_argument('--src_max_len', default=300, type=int,
                         help='Minimum length of source sequences; Default is 300')
-    parser.add_argument('--trg_max_len', default=0, type=int,
+    parser.add_argument('--trg_max_len', default=300, type=int,
                         help='Minimum length of target sequences; Default is 300')
     parser.add_argument('--num_workers', default=8, type=int, 
                         help='Num CPU Workers; Default is 8')
     parser.add_argument('--batch_size', default=16, type=int, 
                         help='Batch size; Default is 16')
-    parser.add_argument('--num_epochs', default=10, type=int, 
-                        help='Epoch count; Default is 10')
+    parser.add_argument('--num_epochs', default=50, type=int, 
+                        help='Epoch count; Default is 50')
+    parser.add_argument('--max_lr', default=5e-5, type=float,
+                        help='Maximum learning rate of warmup scheduler; Default is 5e-5')
+    parser.add_argument('--w_decay', default=1e-5, type=float,
+                        help="Ralamb's weight decay; Default is 1e-5")
     # Model setting
     parser.add_argument('--parallel', default=True, type=str2bool,
                         help='PTransformer option; Default is True')
@@ -92,10 +96,8 @@ if __name__=='__main__':
                         help="Share weight between target embedding & last dense layer; Default is False")
     parser.add_argument('--emb_src_trg_weight_sharing', default=True, type=str2bool, 
                         help="Share weight between source and target embedding; Default is True")
-
-    parser.add_argument('--lr', default=5e-5, type=float, help='Learning rate; Default is 5e-5')
-    parser.add_argument('--w_decay', default=5e-6, type=float, help='Weight decay ratio; Default is 5e-6')
-    parser.add_argument('--grad_norm', default=5, type=int, help='Graddient clipping norm; Default is 5')
+    parser.add_argument('--clip_grad_norm', default=5, type=int, 
+                        help='Graddient clipping norm; Default is 5')
     # Custom setting
     parser.add_argument('--augment_ratio', default=0.2, type=float, help='Augmented ration; Default is 0.2')
     parser.add_argument('--custom_training_tokenizer', action='store_true')

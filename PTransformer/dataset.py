@@ -8,7 +8,7 @@ class CustomDataset(Dataset):
         data = []
         exception_count = 0
         for src, trg in zip(src_list, trg_list):
-            if min_len <= src <= src_max_len and min_len <= trg <= trg_max_len:
+            if min_len <= len(src) <= src_max_len and min_len <= len(trg) <= trg_max_len:
                 data.append((src, trg))
             else:
                 exception_count += 1
@@ -28,7 +28,6 @@ class PadCollate:
     def __init__(self, pad_index=0, dim=0):
         self.dim = dim
         self.pad_index = pad_index
-        self.sep_index = sep_index
 
     def pad_collate(self, batch):
         def pad_tensor(vec, max_len, dim):

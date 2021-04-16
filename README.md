@@ -1,4 +1,4 @@
-# transformer_research
+# Transformer_Research
 My personal Transformer architecture research
 
 ## khsBERT
@@ -13,5 +13,6 @@ BERT pretrained by 'Korean Hate Speech Detection' (https://www.kaggle.com/c/kore
 ![Transformer_to_PTransformer](./PTransformer/img/Transformer_to_PTransformer.png)
 Change Transformer network to Parallel mode. It inspired by Krashen's 'The Natural Order Hypothesis'.
 
-- Plan to initiating
 - Need data sequence
+- Need to data-free coda (Now only for WMT'16 de->en)
+- Need beam search code to testing

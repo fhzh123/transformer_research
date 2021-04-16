@@ -16,6 +16,7 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
 
         # Hyper-parameter setting
+        self.parallel = parallel
         self.pad_idx = pad_idx
         self.bos_idx = bos_idx
         self.eos_idx = eos_idx
@@ -27,7 +28,7 @@ class Transformer(nn.Module):
 
         # Source embedding part
         self.src_embedding = TransformerEmbedding(src_vocab_num, d_model, d_embedding, 
-                                pad_idx=self.pad_idx, max_len=self.src_max_len, mask_id=mask_idx,
+                                pad_idx=self.pad_idx, max_len=self.src_max_len,
                                 embedding_dropout=embedding_dropout, dropout=dropout)
         self.encoder_norms = nn.ModuleList([
             nn.LayerNorm(d_model, eps=1e-6) for _ in range(self.n_common_layers)])

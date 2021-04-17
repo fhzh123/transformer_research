@@ -11,9 +11,9 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 # Import custom modules
-from optimizer.learning_rate import WarmupLinearSchedule
 from task.pretrain.model import kcBERT_pretraining
 from task.pretrain.dataset import CustomDataset, PadCollate
+from optimizer.utils import shceduler_select
 # Import Huggingface
 from transformers import AdamW
 
@@ -27,7 +27,7 @@ def pretraining(args):
 
     # 1) Data open
     print('Data Load & Setting!')
-    with open(os.path.join('./preprocessing/', 'unlabeled_processed.pkl'), 'rb') as f:
+    with open(os.path.join(args.preprocess_path, 'unlabeled_processed.pkl'), 'rb') as f:
         data_ = pickle.load(f)
         unlabel_title = data_['unlabel_title']
         unlabel_comments = data_['unlabel_comments']
@@ -73,8 +73,7 @@ def pretraining(args):
 
     # 2) Optimizer setting
     optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
-    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=int(len(dataloader_dict['train'])/2), 
-                                    t_total=len(dataloader_dict['train'])*args.num_epochs)
+    scheduler = shceduler_select(optimizer, dataloader_dict, args)
 
     # 2) Model resume
     start_epoch = 0
@@ -122,7 +121,7 @@ def pretraining(args):
                         # Optimizer setting
                         optimizer.zero_grad()
 
-                        # 
+                        # Loss calculate
                         mlm_p = mlm_logit[masking_position].log_softmax(dim=-1)
                         mlm_loss = F.cross_entropy(mlm_p, mlm_label)
                         nsp_loss = F.cross_entropy(nsp_logit, nsp_label)
@@ -130,7 +129,10 @@ def pretraining(args):
                         total_loss.backward()
                         clip_grad_norm_(model.parameters(), 5)
                         optimizer.step()
-                        scheduler.step()
+                        if args.scheduler in ['constant', 'warmup']:
+                            scheduler.step()
+                        if args.scheduler == 'reduce_train':
+                            scheduler.step(mlm_loss)
 
                         # Print loss value only training
                         if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
@@ -152,6 +154,10 @@ def pretraining(args):
                     val_nsp_acc += (nsp_logit.max(dim=1)[1] == nsp_label).sum() / len(nsp_label)
 
             if phase == 'valid':
+                if args.scheduler == 'reduce_valid':
+                    scheduler.step(val_mlm_loss)
+                if args.scheduler == 'lambda':
+                    scheduler.step()
                 val_mlm_loss /= len(dataloader_dict[phase])
                 val_nsp_loss /= len(dataloader_dict[phase])
                 val_mlm_acc /= len(dataloader_dict[phase])

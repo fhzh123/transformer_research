@@ -28,6 +28,9 @@ class Transformer(nn.Module):
         self.n_common_layers = n_common_layers
         self.n_encoder_nonparallel = n_encoder_layers - n_common_layers
 
+        self.d_model = d_model
+        self.emb_src_trg_weight_sharing = emb_src_trg_weight_sharing
+
         # Source embedding part
         self.src_embedding = TransformerEmbedding(src_vocab_num, d_model, d_embedding, 
                                 pad_idx=self.pad_idx, max_len=src_max_len,
@@ -73,6 +76,9 @@ class Transformer(nn.Module):
         # Embedding
         enc_output = self.src_embedding(src_seq)
         dec_output = self.trg_embedding(trg_seq)
+        if self.emb_src_trg_weight_sharing:
+            enc_output *= self.d_model ** 0.5
+            dec_output *= self.d_model ** 0.5
 
         # P-Transformer
         if self.parallel:

@@ -4,13 +4,15 @@ from time import time
 # Import PyTorch
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 # Import custom modules
 from dataset import CustomDataset, PadCollate
 from model.transformer import Transformer
 from optimizer.optimizer import Ralamb
-from optimizer.scheduler import WarmupLinearSchedule
+from optimizer.utils import shceduler_select
+from utils import cal_loss
 
 def training(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,10 +71,8 @@ def training(args):
     model = model.to(device)
 
     # 2) Optimizer & Learning rate scheduler setting
-    optimizer = Ralamb(model.parameters(), lr=args.max_lr, weight_decay=args.w_decay)
-    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=len(dataloader_dict['train']), 
-                    t_total=len(dataloader_dict['train'])*args.num_epochs)
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
+    optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), lr=args.max_lr, weight_decay=args.w_decay)
+    scheduler = shceduler_select(optimizer, dataloader_dict, args)
 
     # 3) Model resume
     start_epoch = 0
@@ -105,26 +105,33 @@ def training(args):
             for i, (src, trg) in enumerate(dataloader_dict[phase]):
 
                 # Input, output setting
-                src = src.to(device)
-                trg = trg.to(device)
+                src = src.to(device, non_blocking=True)
+                trg = trg.to(device, non_blocking=True)
 
+                non_pad = trg != args.pad_id
+                trg_sequences_target = trg[non_pad].contiguous().view(-1)
+                
                 if phase == 'train':
                     with torch.set_grad_enabled(True):
-                        seq_logit = model(src, trg)
+                        seq_logit = model(src, trg, non_pad_position=non_pad)
 
                         # Optimizer setting
                         optimizer.zero_grad()
 
                         # Loss calculate
-                        loss = criterion(seq_logit, trg.view(-1))
+                        # loss = cal_loss(seq_logit, trg_sequences_target, args.pad_id, smoothing=True)
+                        loss = F.cross_entropy(seq_logit, trg_sequences_target)
                         loss.backward()
                         clip_grad_norm_(model.parameters(), args.clip_grad_norm)
                         optimizer.step()
-                        scheduler.step()
+                        if args.scheduler in ['constant', 'warmup']:
+                            scheduler.step()
+                        if args.scheduler == 'reduce_train':
+                            scheduler.step(loss)
 
                         # Print loss value only training
                         if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
-                            acc = (seq_logit.max(dim=1)[1] == trg.view(-1)).sum() / len(trg.view(-1))
+                            acc = (seq_logit.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
                             print("[Epoch:%d][%d/%d] train_loss:%3.3f  | train_acc:%3.3f | learning_rate:%3.6f | spend_time:%3.2fmin"
                                     % (epoch+1, i, len(dataloader_dict['train']), 
                                     loss.item(), acc, optimizer.param_groups[0]['lr'], 
@@ -134,10 +141,15 @@ def training(args):
 
                 if phase == 'valid':
                     with torch.no_grad():
-                        seq_logit = model(src, trg)
-                        loss = criterion(seq_logit, trg.view(-1))
+                        seq_logit = model(src, trg, non_pad_position=non_pad)
+                        # loss = cal_loss(seq_logit, trg_sequences_target, args.pad_id, smoothing=False)
+                        loss = F.cross_entropy(seq_logit, trg_sequences_target)
                     val_loss += loss.item()
-                    val_acc += (seq_logit.max(dim=1)[1] == trg.view(-1)).sum() / len(trg.view(-1))
+                    val_acc += (seq_logit.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
+                    if args.scheduler == 'reduce_valid':
+                        scheduler.step(val_loss)
+                    if args.scheduler == 'lambda':
+                        scheduler.step()
 
             if phase == 'valid':
                 val_loss /= len(dataloader_dict[phase])
@@ -156,5 +168,5 @@ def training(args):
                     best_epoch = epoch
 
     # 3) Print results
-    print(f'Best Epoch: {best_epoch}')
+    print(f'Best Epoch: {best_epoch+1}')
     print(f'Best Accuracy: {round(best_val_acc.item(), 2)}')

@@ -5,6 +5,7 @@ from torch.nn import functional as F
 # Import custom modules
 from .embedding.transformer_embedding import TransformerEmbedding
 from .modules.layers import EncoderLayer, DecoderLayer
+from .modules.sublayers import get_subsequent_mask
 
 class Transformer(nn.Module):
     def __init__(self, src_vocab_num, trg_vocab_num, pad_idx=0, bos_idx=1, eos_idx=2, 
@@ -52,6 +53,10 @@ class Transformer(nn.Module):
             DecoderLayer(d_model, dim_feedforward, n_head, d_k, d_v, 
                          dropout=dropout) for _ in range(n_decoder_layers)])
 
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p) 
+
         self.x_logit_scale = 1.
         if trg_emb_prj_weight_sharing:
             # Share the weight between target word embedding & last dense layer
@@ -61,10 +66,9 @@ class Transformer(nn.Module):
         if emb_src_trg_weight_sharing:
             self.src_embedding.token.weight = self.trg_embedding.token.weight
 
-    def forward(self, src_seq, trg_seq):
+    def forward(self, src_seq, trg_seq, non_pad_position=None):
         src_mask = (src_seq != self.pad_idx).unsqueeze(-2)
-        trg_mask = (trg_seq != self.pad_idx).unsqueeze(-2)
-        # trg_mask = get_pad_mask(trg_seq, self.trg_pad_idx) & get_subsequent_mask(trg_seq)
+        trg_mask = (trg_seq != self.pad_idx).unsqueeze(-2) & get_subsequent_mask(trg_seq)
         
         # Embedding
         enc_output = self.src_embedding(src_seq)
@@ -98,6 +102,9 @@ class Transformer(nn.Module):
                 dec_output, dec_slf_attn, dec_enc_attn = dec_layer(
                     dec_output, enc_output, slf_attn_mask=trg_mask, dec_enc_attn_mask=src_mask)
 
+        if non_pad_position is not None:
+            dec_output = dec_output[non_pad_position]
+
         dec_output = self.trg_output_norm(self.trg_output_linear(dec_output))
         seq_logit = self.trg_output_linear2(dec_output) * self.x_logit_scale
-        return seq_logit.view(-1, seq_logit.size(2))
+        return seq_logit

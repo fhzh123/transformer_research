@@ -7,6 +7,8 @@ from .embedding.transformer_embedding import TransformerEmbedding
 from .modules.layers import EncoderLayer, DecoderLayer
 from .modules.sublayers import get_subsequent_mask
 
+import time
+
 class Transformer(nn.Module):
     def __init__(self, src_vocab_num, trg_vocab_num, pad_idx=0, bos_idx=1, eos_idx=2, 
                  src_max_len=300, trg_max_len=300, d_model=512, d_embedding=256, 
@@ -58,7 +60,8 @@ class Transformer(nn.Module):
 
         for p in self.parameters():
             if p.dim() > 1:
-                nn.init.xavier_uniform_(p) 
+                print(p)
+                nn.init.xavier_uniform_(p)
 
         self.x_logit_scale = 1.
         if trg_emb_prj_weight_sharing:
@@ -113,4 +116,4 @@ class Transformer(nn.Module):
 
         dec_output = self.trg_output_norm(self.trg_output_linear(dec_output))
         seq_logit = self.trg_output_linear2(dec_output) * self.x_logit_scale
-        return seq_logit
+        return seq_logit.log_softmax(dim=1)

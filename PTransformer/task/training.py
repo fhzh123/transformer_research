@@ -7,6 +7,8 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
+# Import Huggingface
+from transformers import AdamW
 # Import custom modules
 from dataset import CustomDataset, PadCollate
 from model.transformer import Transformer
@@ -71,7 +73,9 @@ def training(args):
     model = model.to(device)
 
     # 2) Optimizer & Learning rate scheduler setting
-    optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), lr=args.max_lr, weight_decay=args.w_decay)
+    # 2) Optimizer setting
+    optimizer = AdamW(model.parameters(), lr=args.max_lr, eps=1e-8)
+    # optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), lr=args.max_lr, weight_decay=args.w_decay)
     scheduler = shceduler_select(optimizer, dataloader_dict, args)
 
     # 3) Model resume

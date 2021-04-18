@@ -65,10 +65,10 @@ if __name__=='__main__':
                         help="Transformer's value dimension; Default is 64")
     parser.add_argument('--dim_feedforward', default=2048, type=int, 
                         help="Feedforward network's dimension; Default is 768")
-    parser.add_argument('--dropout', default=0.3, type=float, 
-                        help="Dropout ration; Default is 0.3")
-    parser.add_argument('--embedding_dropout', default=0.1, type=float, 
-                        help="Embedding dropout ration; Default is 0.1")
+    parser.add_argument('--dropout', default=0.5, type=float, 
+                        help="Dropout ration; Default is 0.5")
+    parser.add_argument('--embedding_dropout', default=0.3, type=float, 
+                        help="Embedding dropout ration; Default is 0.3")
     parser.add_argument('--n_common_layers', default=6, type=int, 
                         help="In PTransformer, parallel layer count; Default is 6")
     parser.add_argument('--n_encoder_layers', default=6, type=int, 

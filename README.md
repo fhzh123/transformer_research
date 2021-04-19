@@ -16,3 +16,15 @@ Change Transformer network to Parallel mode. It inspired by Krashen's 'The Natur
 - Need data sequence
 - Need to data-free coda (Now only for WMT'16 de->en)
 - Need beam search code to testing
+
+## Reconstruct Feature
+Use reconstruct BERT's last hidden feature map to input in other BERT.
+
+- Need to refactoring
+- Need to data-free code
+
+## NER Conditional Augmentation
+Expanding version of ConditionalBERT. Augment only person or organization information to augment and privacy protect.
+
+- Need to refactoring
+- Need to data-free code

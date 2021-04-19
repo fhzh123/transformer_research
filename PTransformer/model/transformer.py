@@ -7,7 +7,29 @@ from .embedding.transformer_embedding import TransformerEmbedding
 from .modules.layers import EncoderLayer, DecoderLayer
 from .modules.sublayers import get_subsequent_mask
 
-import time
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_hid, n_position=200):
+        super(PositionalEncoding, self).__init__()
+
+        # Not a parameter
+        self.register_buffer('pos_table', self._get_sinusoid_encoding_table(n_position, d_hid))
+
+    def _get_sinusoid_encoding_table(self, n_position, d_hid):
+        ''' Sinusoid position encoding table '''
+        # TODO: make it with torch instead of numpy
+
+        def get_position_angle_vec(position):
+            return [position / np.power(10000, 2 * (hid_j // 2) / d_hid) for hid_j in range(d_hid)]
+
+        sinusoid_table = np.array([get_position_angle_vec(pos_i) for pos_i in range(n_position)])
+        sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
+        sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
+
+        return torch.FloatTensor(sinusoid_table).unsqueeze(0)
+
+    def forward(self, x):
+        return x + self.pos_table[:, :x.size(1)].clone().detach()
 
 class Transformer(nn.Module):
     def __init__(self, src_vocab_num, trg_vocab_num, pad_idx=0, bos_idx=1, eos_idx=2, 
@@ -34,16 +56,27 @@ class Transformer(nn.Module):
         self.emb_src_trg_weight_sharing = emb_src_trg_weight_sharing
 
         # Source embedding part
-        self.src_embedding = TransformerEmbedding(src_vocab_num, d_model, d_embedding, 
-                                pad_idx=self.pad_idx, max_len=src_max_len,
-                                embedding_dropout=embedding_dropout)
+        self.src_embedding = nn.Embedding(src_vocab_num, d_embedding, padding_idx=pad_idx)
+        self.src_position_enc = PositionalEncoding(d_embedding, n_position=src_max_len)
+        self.src_embedding_linear = nn.Linear(d_embedding, d_model)
+        self.src_embedding_dropout = nn.Dropout(embedding_dropout)
+        self.src_embedding_norm = nn.LayerNorm(d_model, eps=1e-6)
+
+        # Source Multi-head attention part
         self.encoder_norms = nn.ModuleList([
             nn.LayerNorm(d_model, eps=1e-6) for _ in range(self.n_common_layers)])
         
-        # Target embedding part
-        self.trg_embedding = TransformerEmbedding(trg_vocab_num, d_model, d_embedding,
-                                pad_idx=self.pad_idx, max_len=trg_max_len, 
-                                embedding_dropout=embedding_dropout)
+        # Source embedding part
+        self.trg_embedding = nn.Embedding(trg_vocab_num, d_embedding, padding_idx=pad_idx)
+        self.trg_position_enc = PositionalEncoding(d_embedding, n_position=trg_max_len)
+        self.trg_embedding_linear = nn.Linear(d_embedding, d_model)
+        self.trg_embedding_dropout = nn.Dropout(embedding_dropout)
+        self.trg_embedding_norm = nn.LayerNorm(d_model, eps=1e-6)
+        # self.trg_embedding = TransformerEmbedding(trg_vocab_num, d_model, d_embedding,
+        #                         pad_idx=self.pad_idx, max_len=trg_max_len, 
+        #                         embedding_dropout=embedding_dropout)
+
+        # Target Multi-head attention part
         self.trg_output_linear = nn.Linear(d_model, d_embedding, bias=False)
         self.trg_output_norm = nn.LayerNorm(d_embedding)
         self.trg_output_linear2 = nn.Linear(d_embedding, trg_vocab_num, bias=False)
@@ -60,28 +93,34 @@ class Transformer(nn.Module):
 
         for p in self.parameters():
             if p.dim() > 1:
-                print(p)
                 nn.init.xavier_uniform_(p)
 
         self.x_logit_scale = 1.
         if trg_emb_prj_weight_sharing:
             # Share the weight between target word embedding & last dense layer
-            self.trg_output_linear2.weight = self.trg_embedding.token.weight
+            self.trg_output_linear2.weight = self.trg_embedding.weight
             self.x_logit_scale = (d_model ** -0.5)
 
         if emb_src_trg_weight_sharing:
-            self.src_embedding.token.weight = self.trg_embedding.token.weight
+            self.src_embedding.weight = self.trg_embedding.weight
 
     def forward(self, src_seq, trg_seq, non_pad_position=None):
         src_mask = (src_seq != self.pad_idx).unsqueeze(-2)
         trg_mask = (trg_seq != self.pad_idx).unsqueeze(-2) & get_subsequent_mask(trg_seq)
         
-        # Embedding
+        # Source Embedding
         enc_output = self.src_embedding(src_seq)
+        if self.emb_src_trg_weight_sharing:
+            enc_output *= self.d_model ** 0.5
+        enc_output = self.src_embedding_dropout(self.src_position_enc(enc_output))
+        enc_output = self.src_embedding_norm(self.src_embedding_linear(enc_output))
+
+        # Target Embedding
         dec_output = self.trg_embedding(trg_seq)
         if self.emb_src_trg_weight_sharing:
             enc_output *= self.d_model ** 0.5
-            dec_output *= self.d_model ** 0.5
+        dec_output = self.trg_embedding_dropout(self.trg_position_enc(dec_output))
+        dec_output = self.trg_embedding_norm(self.trg_embedding_linear(dec_output))
 
         # P-Transformer
         if self.parallel:

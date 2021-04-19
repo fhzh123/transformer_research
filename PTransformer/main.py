@@ -5,6 +5,7 @@ from time import time
 # Import custom modules
 from task.preprocessing import preprocessing
 from task.training import training
+from task.training2 import training2
 from utils import str2bool
 
 def main(args):
@@ -18,6 +19,9 @@ def main(args):
     if args.training:
         training(args)
 
+    if args.training2:
+        training2(args)
+
     # Time calculate
     print(f'Done! ; {round((time()-total_start_time)/60, 3)}min spend')
 
@@ -27,6 +31,7 @@ if __name__=='__main__':
     # Task setting
     parser.add_argument('--preprocessing', action='store_true')
     parser.add_argument('--training', action='store_true')
+    parser.add_argument('--training2', action='store_true')
     parser.add_argument('--resume', action='store_true')
     # Path setting
     parser.add_argument('--data_path', default='/HDD/kyohoon/acl_workshop', type=str,

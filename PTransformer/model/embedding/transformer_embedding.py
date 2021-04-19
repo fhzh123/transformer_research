@@ -14,7 +14,7 @@ class TransformerEmbedding(nn.Module):
     """
 
     def __init__(self, vocab_size, d_model, d_embedding, pad_idx=0, max_len=512, 
-                 embedding_dropout=0.1, segment_embedding=False):
+                 embedding_dropout=0.1):
         """
         :param vocab_size: total vocab size
         :param d_embedding: embedding size of token embedding

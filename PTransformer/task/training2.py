@@ -1,5 +1,5 @@
 import os
-import pickle
+import dill as pickle
 from time import time
 # Import PyTorch
 import torch
@@ -7,6 +7,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
+from torchtext.data import Field, Dataset, BucketIterator
 # Import Huggingface
 from transformers import AdamW
 # Import custom modules
@@ -16,7 +17,7 @@ from optimizer.optimizer import Ralamb
 from optimizer.utils import shceduler_select
 from utils import cal_loss
 
-def training(args):
+def training2(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     #===================================#
@@ -24,32 +25,33 @@ def training(args):
     #===================================#
 
     # 1) Data open
-    print('Data Load & Setting!')
-    with open(os.path.join(args.preprocess_path, 'processed.pkl'), 'rb') as f:
-        data_ = pickle.load(f)
-        train_src_indices = data_['train_src_indices']
-        valid_src_indices = data_['valid_src_indices']
-        train_trg_indices = data_['train_trg_indices']
-        valid_trg_indices = data_['valid_trg_indices']
-        src_word2id = data_['src_word2id']
-        trg_word2id = data_['trg_word2id']
-        del data_
+    batch_size = args.batch_size
+    data = pickle.load(open('m30k_deen_shr.pkl', 'rb'))
+
+    args.max_token_seq_len = data['settings'].max_len
+    args.src_pad_idx = data['vocab']['src'].vocab.stoi['<blank>']
+    args.trg_pad_idx = data['vocab']['trg'].vocab.stoi['<blank>']
+
+    args.src_vocab_size = len(data['vocab']['src'].vocab)
+    args.trg_vocab_size = len(data['vocab']['trg'].vocab)
+
+    #========= Preparing Model =========#
+    # if opt.embs_share_weight:
+    #     assert data['vocab']['src'].vocab.stoi == data['vocab']['trg'].vocab.stoi, \
+    #         'To sharing word embedding the src/trg word2idx table shall be the same.'
 
     # 2) Dataloader setting
+    fields = {'src': data['vocab']['src'], 'trg':data['vocab']['trg']}
+
     dataset_dict = {
-        'train': CustomDataset(train_src_indices, train_trg_indices, 
-                               min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len),
-        'valid': CustomDataset(valid_src_indices, valid_trg_indices,
-                               min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len),
+        'train': Dataset(examples=data['train'], fields=fields),
+        'valid': Dataset(examples=data['valid'], fields=fields)
     }
     dataloader_dict = {
-        'train': DataLoader(dataset_dict['train'], collate_fn=PadCollate(), drop_last=True,
-                            batch_size=args.batch_size, shuffle=True, pin_memory=True,
-                            num_workers=args.num_workers),
-        'valid': DataLoader(dataset_dict['valid'], collate_fn=PadCollate(), drop_last=False,
-                            batch_size=args.batch_size, shuffle=False, pin_memory=True,
-                            num_workers=args.num_workers)
+        'train': BucketIterator(dataset_dict['train'], batch_size=batch_size, device=device, train=True),
+        'valid': BucketIterator(dataset_dict['valid'], batch_size=batch_size, device=device)
     }
+
     print(f"Total number of trainingsets  iterations - {len(dataset_dict['train'])}, {len(dataloader_dict['train'])}")
 
     #===================================#
@@ -73,20 +75,22 @@ def training(args):
     model = model.to(device)
 
     # 2) Optimizer & Learning rate scheduler setting
-    # 2) Optimizer setting
     optimizer = AdamW(model.parameters(), lr=args.max_lr, eps=1e-8)
-    # optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), lr=args.max_lr, weight_decay=args.w_decay)
     scheduler = shceduler_select(optimizer, dataloader_dict, args)
 
     # 3) Model resume
     start_epoch = 0
-    # if args.resume:
-    #     checkpoint = torch.load(os.path.join(args.save_path, 'checkpoint.pth.tar'))
-    #     start_epoch = checkpoint['epoch'] + 1
-    #     model.load_state_dict(checkpoint['model'])
-    #     optimizer.load_state_dict(checkpoint['optimizer'])
-    #     scheduler.load_state_dict(checkpoint['scheduler'])
-    #     del checkpoint
+
+    # 4) Batch setting
+    def patch_src(src, pad_idx):
+        src = src.transpose(0, 1)
+        return src
+
+
+    def patch_trg(trg, pad_idx):
+        trg = trg.transpose(0, 1)
+        trg, gold = trg[:, :-1], trg[:, 1:].contiguous().view(-1)
+        return trg, gold
 
     #===================================#
     #=========Model Train Start=========#
@@ -106,14 +110,14 @@ def training(args):
                 val_loss = 0
                 val_acc = 0
                 model.eval()
-            for i, (src, trg) in enumerate(dataloader_dict[phase]):
+            for i, batch in enumerate(dataloader_dict[phase]):
 
                 # Input, output setting
-                src = src.to(device, non_blocking=True)
-                trg = trg.to(device, non_blocking=True)
+                src_seq = patch_src(batch.src, args.src_pad_idx).to(device)
+                trg_seq, gold = map(lambda x: x.to(device), patch_trg(batch.trg, args.trg_pad_idx))
 
-                non_pad = trg != args.pad_id
-                trg_sequences_target = trg[non_pad].contiguous().view(-1)
+                non_pad = trg_seq != args.trg_pad_idx
+                trg_sequences_target = trg_seq[non_pad].contiguous().view(-1)
                 
                 if phase == 'train':
                     with torch.set_grad_enabled(True):
@@ -121,7 +125,7 @@ def training(args):
                         # Optimizer setting
                         optimizer.zero_grad()
 
-                        seq_logit = model(src, trg, non_pad_position=non_pad)
+                        seq_logit = model(src_seq, trg_seq, non_pad_position=non_pad)
 
                         # Loss calculate
                         # loss = cal_loss(seq_logit, trg_sequences_target, args.pad_id, smoothing=True)
@@ -146,7 +150,7 @@ def training(args):
 
                 if phase == 'valid':
                     with torch.no_grad():
-                        seq_logit = model(src, trg, non_pad_position=non_pad)
+                        seq_logit = model(src_seq, trg_seq, non_pad_position=non_pad)
                         # loss = cal_loss(seq_logit, trg_sequences_target, args.pad_id, smoothing=False)
                         loss = F.cross_entropy(seq_logit, trg_sequences_target)
                     val_loss += loss.item()

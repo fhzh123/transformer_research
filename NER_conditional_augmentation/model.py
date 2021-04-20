@@ -9,11 +9,6 @@ from torch.nn import functional as F
 # Import Huggingface
 from transformers import BertForMaskedLM, BertConfig, BertForTokenClassification, BertTokenizer
 
-def pad_tensor(vec, max_len, dim):
-    pad_size = list(vec.shape)
-    pad_size[dim] = max_len - vec.size(dim)
-    return torch.cat([vec, torch.LongTensor(*pad_size).fill_(0)], dim=dim)
-
 class Custom_ConditionalBERT(nn.Module):
     def __init__(self, mask_id_token=103):
 
@@ -44,6 +39,13 @@ class Custom_ConditionalBERT(nn.Module):
         # Replace NER token to MASK token
         src_input_sentence[ner_results != 0] = torch.LongTensor([self.mask_id_token]).to(device)
 
+        # Padding tensor
+        def pad_tensor(vec, max_len, dim):
+            pad_size = list(vec.shape)
+            pad_size[dim] = max_len - vec.size(dim)
+            return torch.cat([vec, torch.LongTensor(*pad_size).fill_(0)], dim=dim)
+
+        # Remove repetition of MASK token and concat tensor
         for i, src_list in enumerate(src_input_sentence.tolist()):
             src_list = ['remove_token' if g == self.mask_id_token and i!=0 else g for _, group_ in groupby(src_list) for i, g in enumerate(group_)]
             src_list = list(filter(lambda a: a != 'remove_token', src_list))
@@ -53,7 +55,7 @@ class Custom_ConditionalBERT(nn.Module):
             else:
                 ner_masking_tensor = torch.cat((ner_masking_tensor, src_tensor.unsqueeze(0)), dim=0)
 
-        # Masking the NER_Masking token
+        # MLM process to NER_Masking token
         ner_attention_mask = (ner_masking_tensor != 0)
         mlm_out = self.mlm_model(ner_masking_tensor, attention_mask=ner_attention_mask)
         

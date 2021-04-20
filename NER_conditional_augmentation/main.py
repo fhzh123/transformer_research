@@ -4,10 +4,10 @@ import argparse
 
 # Import custom modules
 from preprocessing import preprocessing
-from task.reconstruction.reconstruction import reconstruction
-from task.pretrain.pretrain import pretraining
-from task.classification.train import training
-from test import testing
+# from task.reconstruction.reconstruction import reconstruction
+# from task.pretrain.pretrain import pretraining
+# from task.classification.train import training
+# from test import testing
 
 def main(args):
     # Time setting
@@ -21,9 +21,9 @@ def main(args):
     if args.augmenting:
         augmenting(args)
 
-    # training
-    if args.training:
-        training(args)
+    # # training
+    # if args.training:
+    #     training(args)
 
 
     # Time calculate
@@ -39,7 +39,7 @@ if __name__=='__main__':
     parser.add_argument('--testing', action='store_true')
     parser.add_argument('--resume', action='store_true')
     # Path setting
-    parser.add_argument('--data_path', default='/HDD/dataset/korean-hate-speech-detection/', type=str,
+    parser.add_argument('--data_path', default='/HDD/kyohoon/imdb_classification', type=str,
                         help='Original data path')
     parser.add_argument('--preprocess_path', default='./preprocessing', type=str,
                         help='Preprocessed data  file path')

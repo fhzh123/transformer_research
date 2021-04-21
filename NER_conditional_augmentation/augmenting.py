@@ -100,9 +100,26 @@ def augmenting(args):
             label = [i for j, i in enumerate(label) if j not in label_pop_list]
             augmented_label = [item for item in label for i in range(3)]
             new_dat = pd.DataFrame({
-                'text': augmented_text,
-                'label': augmented_label
+                'comment': augmented_text,
+                'sentiment': augmented_label
             })
             augmented_dataset = pd.concat([augmented_dataset, new_dat], axis=0)
 
     augmented_dataset.to_csv(os.path.join(args.preprocess_path, 'augmented_train.csv'), index=False)
+
+    #===================================#
+    #==============Saving===============#
+    #===================================#
+
+    # 1) Cleansing
+    augmented_dataset['comment'] = encoding_text(augmented_dataset['comment'], 
+                                                 tokenizer, args.max_len)
+
+    # 2) Training pikcle saving
+    with open(os.path.join(args.preprocess_path, 'augmented_processed.pkl'), 'wb') as f:
+        pickle.dump({
+            'augmented_comment_indices': augmented_dataset['comment'].tolist(),
+            'augmented_label': augmented_dataset['sentiment'].tolist(),
+        }, f)
+
+    print(f'Done! ; {round((time.time()-start_time)/60, 3)}min spend')

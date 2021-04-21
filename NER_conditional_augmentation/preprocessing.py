@@ -1,13 +1,13 @@
 import os
 import re
 import time
-import emoji
 import pickle
 import pandas as pd
 import sentencepiece as spm
 # Import Huggingface
-from tokenizers import BertWordPieceTokenizer
 from transformers import BertTokenizer
+# Import custom modules
+from utils import encoding_text
 
 def preprocessing(args):
 
@@ -42,27 +42,8 @@ def preprocessing(args):
 
     print('Cleansing...')
 
-    # 1) Regular expression compile
-    emojis = ''.join(emoji.UNICODE_EMOJI.keys())
-    pattern = re.compile(r'<[^>]+>')
-
-    # 2) Definition clean
-    def clean(x):
-        x = pattern.sub(' ', x)
-        x = x.strip()
-        return x
-    
-    def encoding_text(list_x, tokenizer):
-        encoded_text_list = list_x.map(lambda x: tokenizer.encode(
-            clean(str(x)),
-            max_length=args.max_len,
-            truncation=True
-        ))
-        return encoded_text_list
-
-    # 3) Preprocess comments
-    train['comment'] = encoding_text(train['comment'], tokenizer)
-    test['comment'] = encoding_text(test['comment'], tokenizer)
+    train['comment'] = encoding_text(train['comment'], tokenizer, args.max_len)
+    test['comment'] = encoding_text(test['comment'], tokenizer, args.max_len)
 
     #===================================#
     #==========Label processing=========#
@@ -93,8 +74,8 @@ def preprocessing(args):
     # 2) Training pikcle saving
     with open(os.path.join(args.preprocess_path, 'processed.pkl'), 'wb') as f:
         pickle.dump({
-            'train_comment_indices': train['comments'].tolist(),
-            'test_comment_indices': test['comments'].tolist(),
+            'train_comment_indices': train['comment'].tolist(),
+            'test_comment_indices': test['comment'].tolist(),
             'train_label': train['sentiment'].tolist(),
             'test_label': test['sentiment'].tolist()
         }, f)

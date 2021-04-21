@@ -15,9 +15,11 @@ from transformers import BertTokenizer
 # Import custom modules
 from dataset import CustomDataset, PadCollate
 from model import Custom_ConditionalBERT
+from utils import encoding_text
 
 def augmenting(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    start_time = time.time()
 
     #===================================#
     #============Data Load==============#
@@ -110,6 +112,8 @@ def augmenting(args):
     #===================================#
     #==============Saving===============#
     #===================================#
+
+    print('Cleansing...')
 
     # 1) Cleansing
     augmented_dataset['comment'] = encoding_text(augmented_dataset['comment'], 

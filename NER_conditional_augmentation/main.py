@@ -5,9 +5,7 @@ import argparse
 # Import custom modules
 from preprocessing import preprocessing
 from augmenting import augmenting
-# from task.reconstruction.reconstruction import reconstruction
-# from task.pretrain.pretrain import pretraining
-# from task.classification.train import training
+from train import training
 # from test import testing
 
 def main(args):
@@ -18,12 +16,13 @@ def main(args):
     if args.preprocessing:
         preprocessing(args)
 
+    # Augmentation by NER_Masking
     if args.augmenting:
         augmenting(args)
 
-    # # training
-    # if args.training:
-    #     training(args)
+    # training
+    if args.training:
+        training(args)
 
 
     # Time calculate
@@ -34,9 +33,8 @@ if __name__=='__main__':
     # Task setting
     parser.add_argument('--preprocessing', action='store_true')
     parser.add_argument('--augmenting', action='store_true')
-    parser.add_argument('--reconstruction', action='store_true')
     parser.add_argument('--training', action='store_true')
-    parser.add_argument('--testing', action='store_true')
+    parser.add_argument('--augmentation_data_training', action='store_true')
     parser.add_argument('--resume', action='store_true')
     # Path setting
     parser.add_argument('--data_path', default='/HDD/kyohoon/imdb_classification', type=str,

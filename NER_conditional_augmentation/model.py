@@ -10,12 +10,13 @@ from torch.nn import functional as F
 from transformers import BertForMaskedLM, BertConfig, BertForTokenClassification, BertTokenizer
 
 class Custom_ConditionalBERT(nn.Module):
-    def __init__(self, mask_id_token=103):
+    def __init__(self, mask_id_token=103, device=None):
 
         super(Custom_ConditionalBERT, self).__init__()
 
         # Hyper-parameter setting
         self.mask_id_token = mask_id_token
+        self.device = device
 
         # Model Initiating
         # 1) NER Model
@@ -37,7 +38,7 @@ class Custom_ConditionalBERT(nn.Module):
             ner_results[ix[0]][ix[1]] = torch.tensor(0)
 
         # Replace NER token to MASK token
-        src_input_sentence[ner_results != 0] = torch.LongTensor([self.mask_id_token]).to(device)
+        src_input_sentence[ner_results != 0] = torch.LongTensor([self.mask_id_token]).to(self.device)
 
         # Padding tensor
         def pad_tensor(vec, max_len, dim):
@@ -56,7 +57,8 @@ class Custom_ConditionalBERT(nn.Module):
                 ner_masking_tensor = torch.cat((ner_masking_tensor, src_tensor.unsqueeze(0)), dim=0)
 
         # MLM process to NER_Masking token
+        ner_masking_tensor = ner_masking_tensor.to(self.device)
         ner_attention_mask = (ner_masking_tensor != 0)
         mlm_out = self.mlm_model(ner_masking_tensor, attention_mask=ner_attention_mask)
-        
+
         return mlm_out.logits, ner_masking_tensor

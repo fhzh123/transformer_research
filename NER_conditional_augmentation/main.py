@@ -4,6 +4,7 @@ import argparse
 
 # Import custom modules
 from preprocessing import preprocessing
+from augmenting import augmenting
 # from task.reconstruction.reconstruction import reconstruction
 # from task.pretrain.pretrain import pretraining
 # from task.classification.train import training
@@ -16,7 +17,6 @@ def main(args):
     preprocessing
     if args.preprocessing:
         preprocessing(args)
-
 
     if args.augmenting:
         augmenting(args)
@@ -33,7 +33,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Parsing Method')
     # Task setting
     parser.add_argument('--preprocessing', action='store_true')
-    parser.add_argument('--pretraining', action='store_true')
+    parser.add_argument('--augmenting', action='store_true')
     parser.add_argument('--reconstruction', action='store_true')
     parser.add_argument('--training', action='store_true')
     parser.add_argument('--testing', action='store_true')
@@ -48,8 +48,10 @@ if __name__=='__main__':
     # Preprocessing setting
     parser.add_argument('--vocab_size', default=30000, type=int, 
                         help='Vocabulary size; Default is 30000')
+    parser.add_argument('--min_len', default=4, type=int, 
+                        help='Minimum Length of Source Sentence; Default is 4')
     parser.add_argument('--max_len', default=150, type=int, 
-                        help='Max Length of Source Sentence; Default is 150')
+                        help='Maximum Length of Source Sentence; Default is 150')
     # Training setting
     parser.add_argument('--num_epochs', default=10, type=int, 
                         help='Epoch count; Default is 10')

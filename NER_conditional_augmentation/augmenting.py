@@ -2,19 +2,22 @@
 import os
 import time
 import pickle
+import pandas as pd
+from tqdm import tqdm
 # Import PyTorch
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
+# Import HuggingFace
+from transformers import BertTokenizer
 # Import custom modules
 from dataset import CustomDataset, PadCollate
 from model import Custom_ConditionalBERT
 
 def augmenting(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    random.seed(42)
 
     #===================================#
     #============Data Load==============#
@@ -49,23 +52,57 @@ def augmenting(args):
 
     #
 
-    model = Custom_ConditionalBERT(mask_id_token=103)
+    model = Custom_ConditionalBERT(mask_id_token=103, device=device)
     model = model.to(device)
     model = model.eval()
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
 
     #===================================#
     #===========Augmentation============#
     #===================================#
 
+    augmented_dataset = pd.DataFrame()
+
     with torch.no_grad():
-        for batch in dataloader_dict['train']:
+        for batch in tqdm(dataloader_dict['train']):
             src_seq = batch[0].to(device)
-            label = batch[1].to(device)
+            label = batch[1].tolist()
 
             mlm_logit, ner_masking_tensor = model(src_seq)
 
-            i = 0 
-            for n in ner_masking_tensor:
-                if (n==104).sum().item() == 0:
+            # Pre-setting
+            i = 0
+            old_masking_token_count = 0
+            label_pop_list = list()
+            augmented_tensor = torch.LongTensor([]).to(device)
+            top_3_predicted = mlm_logit[ner_masking_tensor==103].topk(3, 1)[1]
+
+            # Augmentation
+            for n_i, n in enumerate(ner_masking_tensor):
+                if (n==103).sum().item() == 0:
+                    # label = torch.cat([label[0:n_i], label[n_i+1:]])
+                    label_pop_list.append(n_i)
                     continue
                 else:
+                    for k in range(3):
+                        n_augmented = n.clone().detach()
+                        masking_token_count = (n_augmented==103).sum().item()
+                        for ix in (n_augmented == 103).nonzero(as_tuple=True)[0]:
+                            n_augmented[ix] = top_3_predicted[i][k]
+                            i += 1
+                            if i == masking_token_count + old_masking_token_count:
+                                i = old_masking_token_count
+                        augmented_tensor = torch.cat((augmented_tensor, n_augmented.unsqueeze(0)), dim=0)
+                    i += masking_token_count
+                    old_masking_token_count += masking_token_count
+
+            augmented_text = tokenizer.batch_decode(augmented_tensor, skip_special_tokens=True)
+            label = [i for j, i in enumerate(label) if j not in label_pop_list]
+            augmented_label = [item for item in label for i in range(3)]
+            new_dat = pd.DataFrame({
+                'text': augmented_text,
+                'label': augmented_label
+            })
+            augmented_dataset = pd.concat([augmented_dataset, new_dat], axis=0)
+
+    augmented_dataset.to_csv(os.path.join(args.preprocess_path, 'augmented_train.csv'), index=False)

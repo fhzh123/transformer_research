@@ -66,6 +66,7 @@ def training(args):
 
     # Optimizer setting
     optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, eps=1e-8)
 
     # 2) Model resume
     start_epoch = 0

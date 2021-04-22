@@ -38,16 +38,11 @@ def augmenting(args):
     # 2) Dataloader setting
     dataset_dict = {
         'train': CustomDataset(train_comment_indices, train_label, 
-                               min_len=args.min_len, max_len=args.max_len),
-        'test': CustomDataset(test_comment_indices, test_label, 
                                min_len=args.min_len, max_len=args.max_len)
     }
     dataloader_dict = {
         'train': DataLoader(dataset_dict['train'], collate_fn=PadCollate(), drop_last=True,
-                            batch_size=args.batch_size, shuffle=True, pin_memory=True,
-                            num_workers=args.num_workers),
-        'test': DataLoader(dataset_dict['test'], collate_fn=PadCollate(), drop_last=False,
-                            batch_size=args.batch_size, shuffle=True, pin_memory=True,
+                            batch_size=args.batch_size, shuffle=False, pin_memory=True,
                             num_workers=args.num_workers)
     }
     print(f"Total number of trainingsets  iterations - {len(dataset_dict['train'])}, {len(dataloader_dict['train'])}")
@@ -64,6 +59,8 @@ def augmenting(args):
     #===================================#
 
     augmented_dataset = pd.DataFrame()
+    augmented_count = 0
+    original_count = 0
 
     with torch.no_grad():
         for batch in tqdm(dataloader_dict['train']):
@@ -86,7 +83,7 @@ def augmenting(args):
                     label_pop_list.append(n_i)
                     continue
                 else:
-                    for k in range(3):
+                    for k in range(args.augment_top_k):
                         n_augmented = n.clone().detach()
                         masking_token_count = (n_augmented==103).sum().item()
                         for ix in (n_augmented == 103).nonzero(as_tuple=True)[0]:
@@ -98,15 +95,41 @@ def augmenting(args):
                     i += masking_token_count
                     old_masking_token_count += masking_token_count
 
-            augmented_text = tokenizer.batch_decode(augmented_tensor, skip_special_tokens=True)
-            label = [i for j, i in enumerate(label) if j not in label_pop_list]
-            augmented_label = [item for item in label for i in range(3)]
+            # Counting
+            augmented_count += augmented_tensor.size(0)
+            original_count += len(label_pop_list)
+
+            # Process non NER masking sequence
+            if len(label_pop_list) != 0:
+                for i, original_ix in enumerate(label_pop_list):
+                    if i == 0:
+                        original_seq = src_seq[original_ix].unsqueeze(0)
+                    else:
+                        original_seq = torch.cat((original_seq, src_seq[original_ix].unsqueeze(0)), dim=0)
+
+                # Concat
+                augmented_text = tokenizer.batch_decode(augmented_tensor, skip_special_tokens=True)
+                augmented_text = augmented_text + tokenizer.batch_decode(original_seq, skip_special_tokens=True)
+                original_label = [value for i, value in enumerate(label) if i in label_pop_list]
+                label = [i for j, i in enumerate(label) if j not in label_pop_list]
+                augmented_label = [item for item in label for i in range(args.augment_top_k)]
+                augmented_label = augmented_label + original_label
+
+            # If NER_mask in none in sequence
+            else:
+                augmented_text = tokenizer.batch_decode(augmented_tensor, skip_special_tokens=True)
+                label = [i for j, i in enumerate(label) if j not in label_pop_list]
+                augmented_label = [item for item in label for i in range(args.augment_top_k)]
+
             new_dat = pd.DataFrame({
                 'comment': augmented_text,
                 'sentiment': augmented_label
             })
             augmented_dataset = pd.concat([augmented_dataset, new_dat], axis=0)
 
+    print(f'Augmented data size: {augmented_count}')
+    print(f'Non NER_Masking data size: {original_count}')
+    print(f'Total data size: {augmented_dataset.shape[0]}')
     augmented_dataset.to_csv(os.path.join(args.preprocess_path, 'augmented_train.csv'), index=False)
 
     #===================================#

@@ -60,7 +60,7 @@ def training(args):
 
     # 1) Model initiating
     print("Instantiating models...")
-    model = BertForSequenceClassification.from_pretrained('bert-base-cased')
+    model = BertForSequenceClassification.from_pretrained('bert-large-cased')
     model = model.train()
     model = model.to(device)
 
@@ -95,7 +95,7 @@ def training(args):
                 test_loss = 0
                 test_acc = 0
                 model.eval()
-            for i, batch in enumerate(dataloader_dict['train']):
+            for i, batch in enumerate(dataloader_dict[phase]):
                 # Optimizer setting
                 optimizer.zero_grad()
 
@@ -125,15 +125,15 @@ def training(args):
                 if phase == 'test':
                     with torch.no_grad():
                         out = model(src_seq, attention_mask=src_seq!=0, labels=label)
-                        acc = sum(out.logits.max(dim=1)[1] == label) / len(label)
-                    test_loss += loss.item()
+                    acc = sum(out.logits.max(dim=1)[1] == label) / len(label)
+                    test_loss += out.loss.item()
                     test_acc += acc.item()
 
             if phase == 'test':
                 test_loss /= len(dataloader_dict[phase])
                 test_acc /= len(dataloader_dict[phase])
                 print(f'Test Loss: {test_loss:3.3f}')
-                print(f'Test F1: {test_acc:3.3f}')
+                print(f'Test Accuracy: {test_acc*100:2.2f}%')
                 if test_acc > best_test_acc:
                     print('Checkpoint saving...')
                     torch.save({

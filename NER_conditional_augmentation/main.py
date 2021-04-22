@@ -34,7 +34,6 @@ if __name__=='__main__':
     parser.add_argument('--preprocessing', action='store_true')
     parser.add_argument('--augmenting', action='store_true')
     parser.add_argument('--training', action='store_true')
-    parser.add_argument('--augmentation_data_training', action='store_true')
     parser.add_argument('--resume', action='store_true')
     # Path setting
     parser.add_argument('--data_path', default='/HDD/kyohoon/imdb_classification', type=str,
@@ -50,7 +49,11 @@ if __name__=='__main__':
                         help='Minimum Length of Source Sentence; Default is 4')
     parser.add_argument('--max_len', default=150, type=int, 
                         help='Maximum Length of Source Sentence; Default is 150')
+    # Augmentation setting
+    parser.add_argument('--augment_top_k', default=3, type=int,
+                        help='Augmented size of NER_Masking; Default is 3')
     # Training setting
+    parser.add_argument('--augmentation_data_training', action='store_true')
     parser.add_argument('--num_epochs', default=10, type=int, 
                         help='Epoch count; Default is 10')
     parser.add_argument('--num_workers', default=8, type=int, 
@@ -77,14 +80,6 @@ if __name__=='__main__':
     parser.add_argument('--lr_lambda', default=0.95, type=float,
                         help="Lambda learning scheduler's lambda; Default is 0.95")
     # Custom setting
-    parser.add_argument('--augment_ratio', default=0.2, type=float, 
-                        help='Augmented ration; Default is 0.2')
-    parser.add_argument('--custom_training_tokenizer', action='store_true')
-    parser.add_argument('--unlabeled_data_processing', action='store_true')
-    parser.add_argument('--noise_augment', action='store_true')
-    parser.add_argument('--mix_augment', action='store_true')
-    parser.add_argument('--split_ratio', default=0.2, type=float)
-    parser.add_argument('--reconstruction_feature_use', action='store_true')
     # Print frequency
     parser.add_argument('--print_freq', default=100, type=int, help='Print training process frequency; Default is 100')
     args = parser.parse_args()

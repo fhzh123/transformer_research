@@ -28,3 +28,4 @@ Expanding version of ConditionalBERT. Augment only person or organization inform
 
 - Need to refactoring
 - Need to data-free code
+- Need to augment fix => use non NER data

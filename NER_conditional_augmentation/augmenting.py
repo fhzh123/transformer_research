@@ -30,9 +30,7 @@ def augmenting(args):
     with open(os.path.join(args.preprocess_path, 'processed.pkl'), 'rb') as f:
         data_ = pickle.load(f)
         train_comment_indices = data_['train_comment_indices']
-        test_comment_indices = data_['test_comment_indices']
         train_label = data_['train_label']
-        test_label = data_['test_label']
         del data_
 
     # 2) Dataloader setting
@@ -41,7 +39,7 @@ def augmenting(args):
                                min_len=args.min_len, max_len=args.max_len)
     }
     dataloader_dict = {
-        'train': DataLoader(dataset_dict['train'], collate_fn=PadCollate(), drop_last=True,
+        'train': DataLoader(dataset_dict['train'], collate_fn=PadCollate(), drop_last=False,
                             batch_size=args.batch_size, shuffle=False, pin_memory=True,
                             num_workers=args.num_workers)
     }

@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 # Import custom modules
 from dataset import CustomDataset, PadCollate
+from utils import optimizer_select, shceduler_select
 # Import Huggingface
 from transformers import BertForSequenceClassification, AdamW
 
@@ -62,11 +63,14 @@ def training(args):
     print("Instantiating models...")
     model = BertForSequenceClassification.from_pretrained('bert-large-cased')
     model = model.train()
+    for para in model.bert.parameters():
+        para.reguires_grad = False
     model = model.to(device)
 
     # Optimizer setting
-    optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, eps=1e-8)
+    # optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
+    optimizer = optimizer_select(model, args)
+    scheduler = shceduler_select(optimizer, dataloader_dict, args)
 
     # 2) Model resume
     start_epoch = 0
@@ -113,6 +117,8 @@ def training(args):
                         out.loss.backward()
                         clip_grad_norm_(model.parameters(), 5)
                         optimizer.step()
+                        if args.scheduler in ['warmup', 'reduce_train']:
+                            scheduler.step()
 
                         # Print loss value only training
                         if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
@@ -129,6 +135,8 @@ def training(args):
                     acc = sum(out.logits.max(dim=1)[1] == label) / len(label)
                     test_loss += out.loss.item()
                     test_acc += acc.item()
+                    if args.scheduler in ['reduce_valid', 'lambda']:
+                        scheduler.step()
 
             if phase == 'test':
                 test_loss /= len(dataloader_dict[phase])

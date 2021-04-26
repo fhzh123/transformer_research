@@ -55,8 +55,8 @@ if __name__=='__main__':
     parser.add_argument('--augmentation_data_training', action='store_true')
     parser.add_argument('--num_epochs', default=10, type=int, 
                         help='Epoch count; Default is 10')
-    parser.add_argument('--num_workers', default=8, type=int, 
-                        help='Num CPU Workers; Default is 8')
+    parser.add_argument('--num_workers', default=4, type=int, 
+                        help='Num CPU Workers; Default is 4')
     parser.add_argument('--batch_size', default=16, type=int, 
                         help='Batch size; Default is 16')
     parser.add_argument('--dropout', default=0.5, type=float, 
@@ -72,13 +72,16 @@ if __name__=='__main__':
     # Optimizer setting
     optim_list = ['AdamW', 'Adam', 'SGD']
     scheduler_list = ['constant', 'warmup', 'reduce_train', 'reduce_valid', 'lambda']
+    parser.add_argument('--optimizer', default='AdamW', type=str, choices=optim_list,
+                        help="Choose optimizer setting in 'AdamW', 'Adam', 'SGD'; Default is AdamW")
     parser.add_argument('--scheduler', default='constant', type=str, choices=scheduler_list,
-                        help="Choose optimizer setting in 'constant', 'warmup', 'reduce'; Default is constant")
+                        help="Choose scheduler setting in 'constant', 'warmup', 'reduce'; Default is constant")
+    parser.add_argument('--momentum', default=0.9, type=float,
+                        help="SGD's momentum; Default is 0.9")
     parser.add_argument('--n_warmup_epochs', default=2, type=int, 
                         help='Wamrup epochs when using warmup scheduler; Default is 2')
     parser.add_argument('--lr_lambda', default=0.95, type=float,
                         help="Lambda learning scheduler's lambda; Default is 0.95")
-    # Custom setting
     # Print frequency
     parser.add_argument('--print_freq', default=100, type=int, help='Print training process frequency; Default is 100')
     args = parser.parse_args()

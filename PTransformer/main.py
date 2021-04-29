@@ -78,8 +78,8 @@ if __name__=='__main__':
                         help="Number of decoder layers; Default is 6")
     parser.add_argument('--trg_emb_prj_weight_sharing', default=False, type=str2bool, 
                         help="Share weight between target embedding & last dense layer; Default is False")
-    parser.add_argument('--emb_src_trg_weight_sharing', default=True, type=str2bool, 
-                        help="Share weight between source and target embedding; Default is True")
+    parser.add_argument('--emb_src_trg_weight_sharing', default=False, type=str2bool, 
+                        help="Share weight between source and target embedding; Default is False")
     parser.add_argument('--clip_grad_norm', default=5, type=int, 
                         help='Graddient clipping norm; Default is 5')
     # Training setting

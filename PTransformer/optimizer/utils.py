@@ -15,7 +15,7 @@ def optimizer_select(model, args):
                                 lr=args.lr, eps=1e-8, weight_decay=args.w_decay)
     elif args.optimizer == 'Ralamb':
         optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), 
-                           lr=args.max_lr, weight_decay=args.w_decay)
+                           lr=args.lr, weight_decay=args.w_decay)
     else:
         raise Exception("Choose optimizer in ['AdamW', 'Adam', 'SGD', 'Ralamb']")
     return optimizer

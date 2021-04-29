@@ -70,7 +70,7 @@ class Ralamb(Optimizer):
                     buffered[2] = radam_step
 
                 if group['weight_decay'] != 0:
-                    p_data_fp32.add_(-group['weight_decay'] * group['lr'], p_data_fp32)
+                    p_data_fp32.add_(p_data_fp32, alpha=-group['weight_decay'] * group['lr'])
 
                 weight_norm = p.data.pow(2).sum().sqrt().clamp(0, 10)
                 radam_norm = p_data_fp32.pow(2).sum().sqrt()

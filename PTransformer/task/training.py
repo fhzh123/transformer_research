@@ -13,19 +13,22 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.cuda.amp import GradScaler, autocast
 # Import custom modules
-from dataset import CustomDataset
 from model.transformer import Transformer
-from optimizer.optimizer import Ralamb
+from model.dataset import CustomDataset
 from optimizer.utils import shceduler_select, optimizer_select
 from utils import label_smoothing_loss, TqdmLoggingHandler, write_log
 
 def training(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    #===================================#
+    #==============Logging==============#
+    #===================================#
+
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     handler = TqdmLoggingHandler()
-    handler.setFormatter(logging.Formatter(" %(asctime)s - %(message)s"))
+    handler.setFormatter(logging.Formatter(" %(asctime)s - %(message)s", "%Y-%m-%d %H:%M:%S"))
     logger.addHandler(handler)
     logger.propagate = False
 
@@ -119,7 +122,7 @@ def training(args):
             if phase == 'train':
                 model.train()
             if phase == 'valid':
-                print('Validation start...')
+                write_log(logger, 'Validation start...')
                 val_loss = 0
                 val_acc = 0
                 model.eval()
@@ -163,10 +166,6 @@ def training(args):
                             loss.item(), acc, optimizer.param_groups[0]['lr'], 
                             (time() - start_time_e) / 60)
                         write_log(logger, iter_log)
-                        # print("[Epoch:%d][%d/%d] train_loss:%3.3f  | train_acc:%3.3f | learning_rate:%3.6f | spend_time:%3.2fmin"
-                        #         % (epoch, i, len(dataloader_dict['train']), 
-                        #         loss.item(), acc, optimizer.param_groups[0]['lr'], 
-                        #         (time() - start_time_e) / 60))
                         freq = 0
                     freq += 1
 
@@ -185,8 +184,8 @@ def training(args):
             if phase == 'valid':
                 val_loss /= len(dataloader_dict[phase])
                 val_acc /= len(dataloader_dict[phase])
-                print(f'Validation Loss: {val_loss}')
-                print(f'Validation Accuracy: {val_acc}')
+                write_log(logger, 'Validation Loss: %3.3f' % val_loss)
+                write_log(logger, 'Validation Accuracy: %3.3f' % val_acc)
                 if val_acc > best_val_acc:
                     print('Checkpoint saving...')
                     torch.save({

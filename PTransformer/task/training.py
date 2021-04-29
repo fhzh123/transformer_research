@@ -161,9 +161,9 @@ def training(args):
                     # Print loss value only training
                     if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
                         acc = (predicted.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
-                        iter_log = "[Epoch:%d][%d/%d] train_loss:%3.3f  | train_acc:%3.3f | learning_rate:%3.6f | spend_time:%3.2fmin" %  \
+                        iter_log = "[Epoch:%d][%d/%d] train_loss:%3.3f  | train_acc:%3.3f% | learning_rate:%3.6f | spend_time:%3.2fmin" %  \
                             (epoch, i, len(dataloader_dict['train']), 
-                            loss.item(), acc, optimizer.param_groups[0]['lr'], 
+                            loss.item(), acc*100, optimizer.param_groups[0]['lr'], 
                             (time() - start_time_e) / 60)
                         write_log(logger, iter_log)
                         freq = 0
@@ -185,9 +185,9 @@ def training(args):
                 val_loss /= len(dataloader_dict[phase])
                 val_acc /= len(dataloader_dict[phase])
                 write_log(logger, 'Validation Loss: %3.3f' % val_loss)
-                write_log(logger, 'Validation Accuracy: %3.3f' % val_acc)
+                write_log(logger, 'Validation Accuracy: %3.3f%' % val_acc * 100)
                 if val_acc > best_val_acc:
-                    print('Checkpoint saving...')
+                    write_log(logger, 'Checkpoint saving...')
                     torch.save({
                         'epoch': epoch,
                         'model': model.state_dict(),

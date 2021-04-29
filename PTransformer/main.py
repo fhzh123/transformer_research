@@ -5,7 +5,6 @@ from time import time
 # Import custom modules
 from task.preprocessing import preprocessing
 from task.training import training
-from task.training2 import training2
 from utils import str2bool
 
 def main(args):
@@ -18,9 +17,6 @@ def main(args):
 
     if args.training:
         training(args)
-
-    if args.training2:
-        training2(args)
 
     # Time calculate
     print(f'Done! ; {round((time()-total_start_time)/60, 3)}min spend')
@@ -74,11 +70,11 @@ if __name__=='__main__':
                         help="Dropout ration; Default is 0.5")
     parser.add_argument('--embedding_dropout', default=0.3, type=float, 
                         help="Embedding dropout ration; Default is 0.3")
-    parser.add_argument('--n_common_layers', default=6, type=int, 
+    parser.add_argument('--num_common_layer', default=6, type=int, 
                         help="In PTransformer, parallel layer count; Default is 6")
-    parser.add_argument('--n_encoder_layers', default=6, type=int, 
+    parser.add_argument('--num_encoder_layer', default=6, type=int, 
                         help="Number of encoder layers; Default is 6")
-    parser.add_argument('--n_decoder_layers', default=6, type=int, 
+    parser.add_argument('--num_decoder_layer', default=6, type=int, 
                         help="Number of decoder layers; Default is 6")
     parser.add_argument('--trg_emb_prj_weight_sharing', default=False, type=str2bool, 
                         help="Share weight between target embedding & last dense layer; Default is False")
@@ -99,13 +95,15 @@ if __name__=='__main__':
                         help='Batch size; Default is 16')
     parser.add_argument('--num_epochs', default=100, type=int, 
                         help='Epoch count; Default is 100=300')
-    parser.add_argument('--max_lr', default=1e-5, type=float,
+    parser.add_argument('--lr', default=5e-5, type=float,
                         help='Maximum learning rate of warmup scheduler; Default is 5e-5')
     parser.add_argument('--w_decay', default=1e-5, type=float,
                         help="Ralamb's weight decay; Default is 1e-5")
     # Optimizer & LR_Scheduler setting
-    optim_list = ['AdamW', 'Adam', 'SGD']
+    optim_list = ['AdamW', 'Adam', 'SGD', 'Ralamb']
     scheduler_list = ['constant', 'warmup', 'reduce_train', 'reduce_valid', 'lambda']
+    parser.add_argument('--optimizer', default='AdamW', type=str, choices=optim_list,
+                        help="Choose optimizer setting in 'AdamW', 'Adam', 'SGD'; Default is AdamW")
     parser.add_argument('--scheduler', default='constant', type=str, choices=scheduler_list,
                         help="Choose optimizer setting in 'constant', 'warmup', 'reduce'; Default is constant")
     parser.add_argument('--n_warmup_epochs', default=2, type=int, 

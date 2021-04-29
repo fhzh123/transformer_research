@@ -1,9 +1,28 @@
+from torch import optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, LambdaLR
+from .optimizer import Ralamb
 from .scheduler import WarmupLinearSchedule
+
+def optimizer_select(model, args):
+    if args.optimizer == 'SGD':
+        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 
+                              lr, momentum=args.momentum)
+    elif args.optimizer == 'adam':
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), 
+                               lr=args.lr, eps=1e-8)
+    elif args.optimizer == 'AdamW':
+        optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
+                                lr=args.lr, eps=1e-8, weight_decay=args.w_decay)
+    elif args.optimizer == 'Ralamb':
+        optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), 
+                           lr=args.max_lr, weight_decay=args.w_decay)
+    else:
+        raise Exception("Choose optimizer in ['AdamW', 'Adam', 'SGD', 'Ralamb']")
+    return optimizer
 
 def shceduler_select(optimizer, dataloader_dict, args):
     if args.scheduler == 'constant':
-        scheduler = StepLR(optimizer, step_size=len(dataloader_dict['train'])*999999, gamma=0.1)
+        scheduler = StepLR(optimizer, step_size=len(dataloader_dict['train']), gamma=1)
     elif args.scheduler == 'warmup':
         scheduler = WarmupLinearSchedule(optimizer, 
                                         warmup_steps=int(len(dataloader_dict['train'])*args.n_warmup_epochs), 
@@ -18,3 +37,16 @@ def shceduler_select(optimizer, dataloader_dict, args):
     else:
         raise Exception("Choose shceduler in ['constant', 'warmup', 'reduce_train', 'reduce_valid', 'lambda']")
     return scheduler
+
+    # For later
+    # no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+    # optimizer_grouped_parameters = [
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+    #         "weight_decay": args.weight_decay
+    #     },
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+    #         "weight_decay": 0.0
+    #     },
+    # ]

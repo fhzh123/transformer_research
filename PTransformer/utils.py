@@ -1,4 +1,10 @@
+# Import modules
+import os
+import sys
+import tqdm
+import logging
 import argparse
+# Import PyTorch
 import torch
 import torch.nn.functional as F
 
@@ -12,20 +18,44 @@ def str2bool(v):
     else: 
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-def cal_loss(pred, gold, trg_pad_idx, smoothing=False):
+def label_smoothing_loss(pred, gold, trg_pad_idx, smoothing_eps=0.1):
     ''' Calculate cross entropy loss, apply label smoothing if needed. '''
     gold = gold.contiguous().view(-1)
-    if smoothing:
-        eps = 0.1
-        n_class = pred.size(1)
+    n_class = pred.size(1)
 
-        one_hot = torch.zeros_like(pred).scatter(1, gold.view(-1, 1), 1)
-        one_hot = one_hot * (1 - eps) + (1 - one_hot) * eps / (n_class - 1)
-        log_prb = F.log_softmax(pred, dim=1)
+    one_hot = torch.zeros_like(pred).scatter(1, gold.view(-1, 1), 1)
+    one_hot = one_hot * (1 - smoothing_eps) + (1 - one_hot) * smoothing_eps / (n_class - 1)
+    log_prb = F.log_softmax(pred, dim=1)
 
-        non_pad_mask = gold.ne(trg_pad_idx)
-        loss = -(one_hot * log_prb).sum(dim=1)
-        loss = loss.masked_select(non_pad_mask).mean()
-    else:
-        loss = F.cross_entropy(pred, gold, ignore_index=trg_pad_idx, reduction='mean')
+    non_pad_mask = gold.ne(trg_pad_idx)
+    loss = -(one_hot * log_prb).sum(dim=1)
+    loss = loss.masked_select(non_pad_mask).mean()
     return loss
+
+class TqdmLoggingHandler(logging.Handler):
+    def __init__(self, level=logging.DEBUG):
+        super().__init__(level)
+        self.stream = sys.stdout
+
+    def flush(self):
+        self.acquire()
+        try:
+            if self.stream and hasattr(self.stream, "flush"):
+                self.stream.flush()
+        finally:
+            self.release()
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            tqdm.tqdm.write(msg, self.stream)
+            self.flush()
+        except (KeyboardInterrupt, SystemExit, RecursionError):
+            raise
+        except Exception:
+            self.handleError(record)
+
+
+def write_log(logger, message):
+    if logger:
+        logger.info(message)

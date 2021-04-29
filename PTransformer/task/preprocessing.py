@@ -31,7 +31,7 @@ def preprocessing(args):
     with open(os.path.join(args.data_path, 'val.en'), 'r') as f:
         valid_trg_sequences = [x.replace('\n', '') for x in f.readlines()]
 
-    # 2) Valid data load
+    # 2) Test data load
     with open(os.path.join(args.data_path, 'test.de'), 'r') as f:
         test_src_sequences = [x.replace('\n', '') for x in f.readlines()]
     with open(os.path.join(args.data_path, 'test.en'), 'r') as f:

@@ -7,14 +7,13 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
-# Import Huggingface
-from transformers import AdamW
+from torch.cuda.amp import GradScaler, autocast
 # Import custom modules
 from dataset import CustomDataset, PadCollate
 from model.transformer import Transformer
 from optimizer.optimizer import Ralamb
-from optimizer.utils import shceduler_select
-from utils import cal_loss
+from optimizer.utils import shceduler_select, optimizer_select
+from utils import label_smoothing_loss
 
 def training(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,6 +32,8 @@ def training(args):
         valid_trg_indices = data_['valid_trg_indices']
         src_word2id = data_['src_word2id']
         trg_word2id = data_['trg_word2id']
+        src_vocab_num = len(src_word2id)
+        trg_vocab_num = len(trg_word2id)
         del data_
 
     # 2) Dataloader setting
@@ -58,35 +59,36 @@ def training(args):
 
     # 1) Model initiating
     print("Instantiating models...")
-    model = Transformer(src_vocab_num=args.src_vocab_size, trg_vocab_num=args.trg_vocab_size,
+    model = Transformer(src_vocab_num=src_vocab_num, trg_vocab_num=trg_vocab_num,
                         pad_idx=args.pad_id, bos_idx=args.bos_id, eos_idx=args.eos_id,
-                        src_max_len=args.src_max_len, trg_max_len=args.trg_max_len,
                         d_model=args.d_model, d_embedding=args.d_embedding, n_head=args.n_head,
-                        d_k=args.d_k, d_v=args.d_v, dim_feedforward=args.dim_feedforward,
+                        dim_feedforward=args.dim_feedforward,
+                        num_common_layer=args.num_common_layer, num_encoder_layer=args.num_encoder_layer,
+                        num_decoder_layer=args.num_decoder_layer,
+                        src_max_len=args.src_max_len, trg_max_len=args.trg_max_len,
                         dropout=args.dropout, embedding_dropout=args.embedding_dropout,
-                        n_common_layers=args.n_common_layers, n_encoder_layers=args.n_encoder_layers,
-                        n_decoder_layers=args.n_decoder_layers,
                         trg_emb_prj_weight_sharing=args.trg_emb_prj_weight_sharing,
-                        emb_src_trg_weight_sharing=args.emb_src_trg_weight_sharing, parallel=args.parallel,
-                        device=device)
+                        emb_src_trg_weight_sharing=args.emb_src_trg_weight_sharing, 
+                        parallel=args.parallel)
     model = model.train()
     model = model.to(device)
 
     # 2) Optimizer & Learning rate scheduler setting
     # 2) Optimizer setting
-    optimizer = AdamW(model.parameters(), lr=args.max_lr, eps=1e-8)
-    # optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), lr=args.max_lr, weight_decay=args.w_decay)
+    optimizer = optimizer_select(model, args)
     scheduler = shceduler_select(optimizer, dataloader_dict, args)
+    scaler = GradScaler()
 
     # 3) Model resume
     start_epoch = 0
-    # if args.resume:
-    #     checkpoint = torch.load(os.path.join(args.save_path, 'checkpoint.pth.tar'))
-    #     start_epoch = checkpoint['epoch'] + 1
-    #     model.load_state_dict(checkpoint['model'])
-    #     optimizer.load_state_dict(checkpoint['optimizer'])
-    #     scheduler.load_state_dict(checkpoint['scheduler'])
-    #     del checkpoint
+    if args.resume:
+        checkpoint = torch.load(os.path.join(args.save_path, 'checkpoint.pth.tar'))
+        start_epoch = checkpoint['epoch'] + 1
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        scheduler.load_state_dict(checkpoint['scheduler'])
+        scaler.load_state_dict(checkpoint['scaler'])
+        del checkpoint
 
     #===================================#
     #=========Model Train Start=========#
@@ -96,7 +98,7 @@ def training(args):
 
     print('Train start!')
 
-    for epoch in range(start_epoch, args.num_epochs):
+    for epoch in range(start_epoch + 1, args.num_epochs + 1):
         start_time_e = time()
         for phase in ['train', 'valid']:
             if phase == 'train':
@@ -111,6 +113,7 @@ def training(args):
                 # Input, output setting
                 src = src.to(device, non_blocking=True)
                 trg = trg.to(device, non_blocking=True)
+                tgt_mask = model.generate_square_subsequent_mask(trg.shape[1], device)
 
                 non_pad = trg != args.pad_id
                 trg_sequences_target = trg[non_pad].contiguous().view(-1)
@@ -119,16 +122,18 @@ def training(args):
                     with torch.set_grad_enabled(True):
 
                         # Optimizer setting
-                        optimizer.zero_grad()
-
-                        seq_logit = model(src, trg, non_pad_position=non_pad)
+                        optimizer.zero_grad(set_to_none=True)
 
                         # Loss calculate
-                        # loss = cal_loss(seq_logit, trg_sequences_target, args.pad_id, smoothing=True)
-                        loss = F.cross_entropy(seq_logit, trg_sequences_target)
-                        loss.backward()
+                        with autocast():
+                            predicted = model(src, trg, tgt_mask, non_pad_position=non_pad)
+                            predicted = predicted.view(-1, predicted.size(-1))
+                            loss = label_smoothing_loss(predicted, trg_sequences_target, args.pad_id)
+
+                        scaler.scale(loss).backward()
                         clip_grad_norm_(model.parameters(), args.clip_grad_norm)
-                        optimizer.step()
+                        scaler.step(optimizer)
+                        scaler.update()
                         if args.scheduler in ['constant', 'warmup']:
                             scheduler.step()
                         if args.scheduler == 'reduce_train':
@@ -136,9 +141,9 @@ def training(args):
 
                         # Print loss value only training
                         if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
-                            acc = (seq_logit.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
+                            acc = (predicted.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
                             print("[Epoch:%d][%d/%d] train_loss:%3.3f  | train_acc:%3.3f | learning_rate:%3.6f | spend_time:%3.2fmin"
-                                    % (epoch+1, i, len(dataloader_dict['train']), 
+                                    % (epoch, i, len(dataloader_dict['train']), 
                                     loss.item(), acc, optimizer.param_groups[0]['lr'], 
                                     (time() - start_time_e) / 60))
                             freq = 0
@@ -146,11 +151,10 @@ def training(args):
 
                 if phase == 'valid':
                     with torch.no_grad():
-                        seq_logit = model(src, trg, non_pad_position=non_pad)
-                        # loss = cal_loss(seq_logit, trg_sequences_target, args.pad_id, smoothing=False)
+                        seq_logit = model(src, trg, tgt_mask, non_pad_position=non_pad)
                         loss = F.cross_entropy(seq_logit, trg_sequences_target)
                     val_loss += loss.item()
-                    val_acc += (seq_logit.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
+                    val_acc += (predicted.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
                     if args.scheduler == 'reduce_valid':
                         scheduler.step(val_loss)
                     if args.scheduler == 'lambda':
@@ -167,11 +171,12 @@ def training(args):
                         'epoch': epoch,
                         'model': model.state_dict(),
                         'optimizer': optimizer.state_dict(),
-                        'scheduler': scheduler.state_dict()
-                    }, f'transformer_testing.pth.tar')
+                        'scheduler': scheduler.state_dict(),
+                        'scaler': scaler.state_dict()
+                    }, f'checkpoint.pth.tar')
                     best_val_acc = val_acc
                     best_epoch = epoch
 
     # 3) Print results
-    print(f'Best Epoch: {best_epoch+1}')
+    print(f'Best Epoch: {best_epoch}')
     print(f'Best Accuracy: {round(best_val_acc.item(), 2)}')

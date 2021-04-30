@@ -161,7 +161,7 @@ def training(args):
                     # Print loss value only training
                     if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
                         acc = (predicted.max(dim=1)[1] == trg_sequences_target).sum() / len(trg_sequences_target)
-                        iter_log = "[Epoch:%d][%d/%d] train_loss:%3.3f  | train_acc:%3.3f% | learning_rate:%3.6f | spend_time:%3.2fmin" %  \
+                        iter_log = "[Epoch:%03d][%03d/%03d] train_loss:%03.3f | train_acc:%03.2f%% | learning_rate:%1.6f | spend_time:%02.2fmin" % \
                             (epoch, i, len(dataloader_dict['train']), 
                             loss.item(), acc*100, optimizer.param_groups[0]['lr'], 
                             (time() - start_time_e) / 60)
@@ -185,7 +185,7 @@ def training(args):
                 val_loss /= len(dataloader_dict[phase])
                 val_acc /= len(dataloader_dict[phase])
                 write_log(logger, 'Validation Loss: %3.3f' % val_loss)
-                write_log(logger, 'Validation Accuracy: %3.3f%' % val_acc * 100)
+                write_log(logger, 'Validation Accuracy: %3.2f%%' % (val_acc * 100))
                 if val_acc > best_val_acc:
                     write_log(logger, 'Checkpoint saving...')
                     torch.save({
@@ -197,6 +197,9 @@ def training(args):
                     }, f'checkpoint.pth.tar')
                     best_val_acc = val_acc
                     best_epoch = epoch
+                else:
+                    else_log = f'Still {best_epoch} epoch accuracy({round(best_val_acc.item()*100, 2)})%% is better...'
+                    write_log(logger, else_log)
 
     # 3) Print results
     print(f'Best Epoch: {best_epoch}')

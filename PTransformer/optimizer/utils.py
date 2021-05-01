@@ -6,8 +6,8 @@ from .scheduler import WarmupLinearSchedule
 def optimizer_select(model, args):
     if args.optimizer == 'SGD':
         optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 
-                              lr, momentum=args.momentum)
-    elif args.optimizer == 'adam':
+                              args.lr, momentum=args.momentum)
+    elif args.optimizer == 'Adam':
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), 
                                lr=args.lr, eps=1e-8)
     elif args.optimizer == 'AdamW':

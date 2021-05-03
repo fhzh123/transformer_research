@@ -5,6 +5,7 @@ from time import time
 # Import custom modules
 from task.preprocessing import preprocessing
 from task.training import training
+from task.testing import testing
 from utils import str2bool
 
 def main(args):
@@ -18,6 +19,9 @@ def main(args):
     if args.training:
         training(args)
 
+    if args.testing:
+        testing(args)
+
     # Time calculate
     print(f'Done! ; {round((time()-total_start_time)/60, 3)}min spend')
 
@@ -27,7 +31,7 @@ if __name__=='__main__':
     # Task setting
     parser.add_argument('--preprocessing', action='store_true')
     parser.add_argument('--training', action='store_true')
-    parser.add_argument('--training2', action='store_true')
+    parser.add_argument('--testing', action='store_true')
     parser.add_argument('--resume', action='store_true')
     # Path setting
     parser.add_argument('--data_path', default='/HDD/kyohoon/acl_workshop', type=str,
@@ -60,10 +64,6 @@ if __name__=='__main__':
                         help='Transformer embedding word token dimension; Default is 256')
     parser.add_argument('--n_head', default=12, type=int, 
                         help="Multihead Attention's head count; Default is 12")
-    parser.add_argument('--d_k', default=64, type=int, 
-                        help="Transformer's key dimension; Default is 64")
-    parser.add_argument('--d_v', default=64, type=int, 
-                        help="Transformer's value dimension; Default is 64")
     parser.add_argument('--dim_feedforward', default=2048, type=int, 
                         help="Feedforward network's dimension; Default is 768")
     parser.add_argument('--dropout', default=0.5, type=float, 
@@ -110,6 +110,13 @@ if __name__=='__main__':
                         help='Wamrup epochs when using warmup scheduler; Default is 2')
     parser.add_argument('--lr_lambda', default=0.95, type=float,
                         help="Lambda learning scheduler's lambda; Default is 0.95")
+    # Optimizer & LR_Scheduler setting
+    parser.add_argument('--beam_size', default=5, type=int,
+                        help='Beam search size; Default is 5')
+    parser.add_argument('--beam_alpha', default=0.7, type=float,
+                        help='Beam length regularization; Default is 0.7')
+    parser.add_argument('--repetition_penalty', default=0.7, type=float,
+                        help='Repetition penalty term; Default is 0.7')
     # Print frequency
     parser.add_argument('--print_freq', default=100, type=int, 
                         help='Print training process frequency; Default is 100')

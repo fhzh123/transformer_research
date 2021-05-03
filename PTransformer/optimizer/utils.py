@@ -3,19 +3,31 @@ from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, LambdaLR
 from .optimizer import Ralamb
 from .scheduler import WarmupLinearSchedule
 
+from transformers import AdamW
+
 def optimizer_select(model, args):
+    no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "weight_decay": args.w_decay
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+            "weight_decay": 0.0
+        },
+    ]
     if args.optimizer == 'SGD':
         optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 
-                              args.lr, momentum=args.momentum)
+                              args.lr, momentum=0.9)
     elif args.optimizer == 'Adam':
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), 
                                lr=args.lr, eps=1e-8)
     elif args.optimizer == 'AdamW':
-        optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
-                                lr=args.lr, eps=1e-8, weight_decay=args.w_decay)
+        optimizer = optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
     elif args.optimizer == 'Ralamb':
         optimizer = Ralamb(filter(lambda p: p.requires_grad, model.parameters()), 
-                           lr=args.lr, weight_decay=args.w_decay)
+                           lr=args.lr)
     else:
         raise Exception("Choose optimizer in ['AdamW', 'Adam', 'SGD', 'Ralamb']")
     return optimizer

@@ -1,11 +1,9 @@
-# coding: utf-8
 # Import modules
 import os
 import gc
 import time
+import pickle
 import logging
-import argparse
-import pickle5 as pickle
 import sentencepiece as spm
 from tqdm import tqdm
 from collections import defaultdict
@@ -14,16 +12,20 @@ from nltk.translate.bleu_score import corpus_bleu
 # Import PyTorch
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
 from torch.nn import functional as F
-
+from torch.utils.data import DataLoader
+from torch.cuda.amp import GradScaler, autocast
 # Import custom modules
-from model.dataset import HanjaKoreanDataset
 from model.transformer import Transformer
-from utils import TqdmLoggingHandler, write_log
+from model.dataset import CustomDataset
+from utils import label_smoothing_loss, TqdmLoggingHandler, write_log
 
-def main(args):
+def testing(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    #===================================#
+    #==============Logging==============#
+    #===================================#
 
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
@@ -32,63 +34,61 @@ def main(args):
     logger.addHandler(handler)
     logger.propagate = False
 
-    write_log(logger, "Load data")
-    def load_data(args):
-        gc.disable()
-        with open(f"{args.preprocessed_data_path}/hanja_korean_word2id.pkl", "rb") as f:
-            data = pickle.load(f)
-            hanja_word2id = data['hanja_word2id']
-            korean_word2id = data['korean_word2id']
-        
-        with open(f"{args.preprocessed_data_path}/preprocessed_test.pkl", "rb") as f:
-            data = pickle.load(f)
-            test_hanja_indices = data['hanja_indices']
-            test_korean_indices = data['korean_indices']
+    #===================================#
+    #============Data Load==============#
+    #===================================#
 
-        gc.enable()
-        write_log(logger, "Finished loading data!")
-        return (
-            hanja_word2id, korean_word2id, 
-            test_hanja_indices, test_korean_indices
-        )
+    # 1) Data open
+    write_log(logger, "Load data...")
+    gc.disable()
+    with open(os.path.join(args.preprocess_path, 'test_processed.pkl'), 'rb') as f:
+        data_ = pickle.load(f)
+        test_src_indices = data_['test_src_indices']
+        test_trg_indices = data_['test_trg_indices']
+        src_word2id = data_['src_word2id']
+        trg_word2id = data_['trg_word2id']
+        trg_id2word = {v: k for k, v in trg_word2id.items()}
+        src_vocab_num = len(src_word2id)
+        trg_vocab_num = len(trg_word2id)
+        del data_
+    gc.enable()
+    write_log(logger, "Finished loading data!")
 
-    # load data
-    (
-        hanja_word2id, korean_word2id, 
-        test_hanja_indices, test_korean_indices,
-    ) = load_data(args)
-    hanja_vocab_num = len(hanja_word2id)
-    korean_vocab_num = len(korean_word2id)
-    korean_id2word = {v: k for k, v in korean_word2id.items()}
+    # 2) Dataloader setting
+    test_dataset = CustomDataset(test_src_indices, test_trg_indices,
+                                 min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len)
+    test_dataloader = DataLoader(test_dataset, drop_last=False, batch_size=args.batch_size, shuffle=False,
+                                 pin_memory=True, num_workers=args.num_workers)
+    write_log(logger, f"Total number of trainingsets  iterations - {len(test_dataset)}, {len(test_dataloader)}")
 
-    hk_dataset = HanjaKoreanDataset(test_hanja_indices, test_korean_indices, 
-                    min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len)
-    hk_loader = DataLoader(hk_dataset, drop_last=True, batch_size=args.hk_batch_size, 
-                    num_workers=4, pin_memory=True)
-    write_log(logger, f"hanja-korean: {len(hk_dataset)}, {len(hk_loader)}")
+    #===================================#
+    #===========Train setting===========#
+    #===================================#
 
-    del (
-        test_hanja_indices, test_korean_indices
-    )
-
-    # build model
-    write_log(logger, "Build model")
-    model = Transformer(hanja_vocab_num, korean_vocab_num, pad_idx=args.pad_idx, bos_idx=args.bos_idx,
-                eos_idx=args.eos_idx, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len, 
-                d_model=args.d_model, d_embedding=args.d_embedding, n_head=args.n_head, dropout=args.dropout,
-                dim_feedforward=args.dim_feedforward, num_encoder_layer=args.num_encoder_layer, 
-                num_decoder_layer=args.num_decoder_layer, num_mask_layer=args.num_mask_layer).to(device)
+    # 1) Model initiating
+    write_log(logger, 'Instantiating model...')
+    model = Transformer(src_vocab_num=src_vocab_num, trg_vocab_num=trg_vocab_num,
+                        pad_idx=args.pad_id, bos_idx=args.bos_id, eos_idx=args.eos_id,
+                        d_model=args.d_model, d_embedding=args.d_embedding, n_head=args.n_head,
+                        dim_feedforward=args.dim_feedforward,
+                        num_common_layer=args.num_common_layer, num_encoder_layer=args.num_encoder_layer,
+                        num_decoder_layer=args.num_decoder_layer,
+                        src_max_len=args.src_max_len, trg_max_len=args.trg_max_len,
+                        dropout=args.dropout, embedding_dropout=args.embedding_dropout,
+                        trg_emb_prj_weight_sharing=args.trg_emb_prj_weight_sharing,
+                        emb_src_trg_weight_sharing=args.emb_src_trg_weight_sharing, 
+                        parallel=args.parallel)
+    tgt_mask = model.generate_square_subsequent_mask(args.trg_max_len - 1, device)
 
     # loda model
     model = model.to(device)
-    model.load_state_dict(torch.load(args.checkpoint_path, map_location=device)['model'])
-    model.mask_encoders = None
+    model.load_state_dict(torch.load('checkpoint.pth.tar', map_location=device)['model'])
     model.eval()
 
     # load sentencepiece model
     write_log(logger, "Load SentencePiece model")
-    spm_ = spm.SentencePieceProcessor()
-    spm_.Load('/HDD/kyohoon/joseon/preprocessing/m_korean.model')
+    spm_trg = spm.SentencePieceProcessor()
+    spm_trg.Load(f'{args.preprocess_path}/m_trg_{args.trg_vocab_size}.model')
 
     # Pre-setting
     predicted_list = list()
@@ -97,7 +97,7 @@ def main(args):
     candidate_token = list()
 
     k = args.beam_size
-    every_batch = torch.arange(0, k*args.hk_batch_size, k, device=device)
+    every_batch = torch.arange(0, k*args.batch_size, k, device=device)
     start_time_e = time.time()
 
     # Decoding text file setting
@@ -108,32 +108,41 @@ def main(args):
 
     # Beam search
     with torch.no_grad():
-        for ix_batch, (src_sequences, trg_sequences) in enumerate(tqdm(hk_loader)):
+        for ix_batch, (src_sequences, trg_sequences) in enumerate(tqdm(test_dataloader)):
 
             # Device setting
             src_sequences = src_sequences.to(device)
             label_list.extend(trg_sequences.tolist())
+            encoder_out_dict = defaultdict(list)
 
             # Encoding
             encoder_out = model.src_embedding(src_sequences).transpose(0, 1) # (src_seq, batch_size, d_model)
             src_key_padding_mask = (src_sequences == model.pad_idx) # (batch_size, src_seq)
-            for i in range(len(model.encoders)):
-                encoder_out = model.encoders[i](encoder_out, 
-                                src_key_padding_mask=src_key_padding_mask) # (src_seq, batch_size, d_model)
+            if args.parallel:
+                for i in range(len(model.encoders)):
+                    encoder_out_dict[i] = model.encoders[i](encoder_out, src_key_padding_mask=src_key_padding_mask) # (src_seq, batch_size, d_model)
+            else:
+                for i in range(len(model.encoders)):
+                    encoder_out = model.encoders[i](encoder_out, 
+                                    src_key_padding_mask=src_key_padding_mask) # (src_seq, batch_size, d_model)
 
             # Expanding
-            src_key_padding_mask = src_key_padding_mask.view(args.hk_batch_size, 1, -1).repeat(1, k, 1).view(-1, src_key_padding_mask.size(1)) # (batch_size * k, src_seq)
-            encoder_out = encoder_out.view(-1, args.hk_batch_size, 1, args.d_model).repeat(1, 1, k, 1).view(encoder_out.size(0), -1, args.d_model) # (src_seq, batch_size * k, d_model)
+            src_key_padding_mask = src_key_padding_mask.view(args.batch_size, 1, -1).repeat(1, k, 1).view(-1, src_key_padding_mask.size(1)) # (batch_size * k, src_seq)
+            if args.parallel:
+                for i in encoder_out_dict:
+                    encoder_out_dict[i] = encoder_out_dict[i].view(-1, args.batch_size, 1, args.d_model).repeat(1, 1, k, 1).view(encoder_out.size(0), -1, args.d_model) # (src_seq, batch_size * k, d_model)
+            else:
+                encoder_out = encoder_out.view(-1, args.batch_size, 1, args.d_model).repeat(1, 1, k, 1).view(encoder_out.size(0), -1, args.d_model) # (src_seq, batch_size * k, d_model)
 
             # Scores save vector & decoding list setting
-            scores_save = torch.zeros(k * args.hk_batch_size, 1).to(device) # (batch_size * k, 1)
-            top_k_scores = torch.zeros(k * args.hk_batch_size, 1).to(device) # (batch_size * k, 1)
+            scores_save = torch.zeros(k * args.batch_size, 1).to(device) # (batch_size * k, 1)
+            top_k_scores = torch.zeros(k * args.batch_size, 1).to(device) # (batch_size * k, 1)
             complete_seqs = defaultdict(list)
             complete_ind = set()
 
             # Decoding start token setting
             seqs = torch.tensor([[model.bos_idx]], dtype=torch.long, device=device) 
-            seqs = seqs.repeat(k*args.hk_batch_size, 1).contiguous() # (batch_size * k, 1)
+            seqs = seqs.repeat(k*args.batch_size, 1).contiguous() # (batch_size * k, 1)
 
             for step in range(model.trg_max_len):
                 # Decoder setting
@@ -143,10 +152,16 @@ def main(args):
 
                 # Decoding sentence
                 decoder_out = model.trg_embedding(seqs).transpose(0, 1) # (out_seq, batch_size * k, d_model)
-                for i in range(len(model.decoders)):
-                    decoder_out = model.decoders[i](decoder_out, encoder_out, tgt_mask=tgt_mask, 
-                                    memory_key_padding_mask=src_key_padding_mask,
-                                    tgt_key_padding_mask=tgt_key_padding_mask) # (out_seq, batch_size * k, d_model)
+                if args.parallel:
+                    for i in range(len(model.decoders)):
+                        decoder_out = model.decoders[i](decoder_out, encoder_out_dict[i], tgt_mask=tgt_mask, 
+                                        memory_key_padding_mask=src_key_padding_mask,
+                                        tgt_key_padding_mask=tgt_key_padding_mask) # (out_seq, batch_size * k, d_model)
+                else:
+                    for i in range(len(model.decoders)):
+                        decoder_out = model.decoders[i](decoder_out, encoder_out, tgt_mask=tgt_mask, 
+                                        memory_key_padding_mask=src_key_padding_mask,
+                                        tgt_key_padding_mask=tgt_key_padding_mask) # (out_seq, batch_size * k, d_model)
 
                 # Score calculate
                 scores = F.gelu(model.trg_output_linear(decoder_out[-1])) # (batch_size * k, d_embedding)
@@ -169,15 +184,15 @@ def main(args):
                     scores[:, model.eos_idx] = float('-inf') # set eos token probability zero in first step
                     top_k_scores, top_k_words = scores.topk(k, 1, True, True)  # (batch_size, k) , (batch_size, k)
                 else:
-                    top_k_scores, top_k_words = scores.view(args.hk_batch_size, -1).topk(k, 1, True, True)
+                    top_k_scores, top_k_words = scores.view(args.batch_size, -1).topk(k, 1, True, True)
 
                 # Previous and Next word extract
-                prev_word_inds = top_k_words // korean_vocab_num # (batch_size * k, out_seq)
-                next_word_inds = top_k_words % korean_vocab_num # (batch_size * k, out_seq)
-                top_k_scores = top_k_scores.view(args.hk_batch_size*k, -1) # (batch_size * k, out_seq)
-                top_k_words = top_k_words.view(args.hk_batch_size*k, -1) # (batch_size * k, out_seq)
+                prev_word_inds = top_k_words // trg_vocab_num # (batch_size * k, out_seq)
+                next_word_inds = top_k_words % trg_vocab_num # (batch_size * k, out_seq)
+                top_k_scores = top_k_scores.view(args.batch_size*k, -1) # (batch_size * k, out_seq)
+                top_k_words = top_k_words.view(args.batch_size*k, -1) # (batch_size * k, out_seq)
                 seqs = seqs[prev_word_inds.view(-1) + every_batch.unsqueeze(1).repeat(1, k).view(-1)] # (batch_size * k, out_seq)
-                seqs = torch.cat([seqs, next_word_inds.view(k*args.hk_batch_size, -1)], dim=1) # (batch_size * k, out_seq + 1)
+                seqs = torch.cat([seqs, next_word_inds.view(k*args.batch_size, -1)], dim=1) # (batch_size * k, out_seq + 1)
 
                 # Find and Save Complete Sequences Score
                 if model.eos_idx in next_word_inds:
@@ -199,22 +214,22 @@ def main(args):
                 scores_save[score_save_pos] = top_k_scores[score_save_pos]
 
             # Beam Length Normalization
-            lp = torch.tensor([len(complete_seqs[i]) for i in range(args.hk_batch_size*k)], device=device)
+            lp = torch.tensor([len(complete_seqs[i]) for i in range(args.batch_size*k)], device=device)
             lp = (((lp + k) ** args.beam_alpha) / ((k + 1) ** args.beam_alpha)).unsqueeze(1)
             scores_save = scores_save / lp
 
             # Predicted and Label processing
-            _, ind = scores_save.view(args.hk_batch_size, k, -1).max(1)
+            _, ind = scores_save.view(args.batch_size, k, -1).max(1)
             ind_expand = ind.view(-1) + every_batch
             predicted_list.extend([complete_seqs[i] for i in ind_expand.tolist()])
 
             # Decoding & BLEU calculate
             for i, comp_seqs in enumerate([complete_seqs[i] for i in ind_expand.tolist()]):
                 # Decoding
-                pred = spm_.DecodeIds(comp_seqs)
-                pred_token = [korean_id2word[ix] for ix in comp_seqs]
-                real = spm_.DecodeIds(trg_sequences.tolist()[i])
-                real_token = [korean_id2word[ix] for ix in trg_sequences.tolist()[i]]
+                pred = spm_trg.DecodeIds(comp_seqs)
+                pred_token = [trg_id2word[ix] for ix in comp_seqs]
+                real = spm_trg.DecodeIds(trg_sequences.tolist()[i])
+                real_token = [trg_id2word[ix] for ix in trg_sequences.tolist()[i]]
                 # File writing
                 with open('./prediction_text.txt', 'a') as f:
                     f.write(pred + '\n')
@@ -228,46 +243,13 @@ def main(args):
             corpus_bleu_score = corpus_bleu(reference_token, candidate_token)
 
             if ix_batch == 0 or freq == args.print_freq:
-                batch_log = '[%d/%d] Corpus BLEU: %3.3f | Spend time:%3.3fmin' % (ix_batch, len(hk_loader), corpus_bleu_score, (time.time() - start_time_e) / 60)
+                batch_log = '[%d/%d] Corpus BLEU: %3.3f | Spend time:%3.3fmin' % (ix_batch, len(test_dataloader), corpus_bleu_score, (time.time() - start_time_e) / 60)
                 write_log(logger, batch_log)
                 freq = 0
             freq += 1
 
-    final_bleu_score = total_bleu_score / len(hk_loader)
-    with open(f'./results/results_beam_{args.beam_size}_{args.beam_alpha}_{args.repetition_penalty}_test.pkl', 'wb') as f:
+    final_bleu_score = corpus_bleu_score / len(test_dataloader)
+    with open(f'./results_beam_{args.beam_size}_{args.beam_alpha}_{args.repetition_penalty}_test.pkl', 'wb') as f:
         pickle.dump({'pred': predicted_list, 'real': label_list}, f)
     final_log = f'Total BLEU Score: {final_bleu_score}'
     write_log(logger, final_log)
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Test machine translation.')
-    parser.add_argument('--preprocessed_data_path',
-        default='/HDD/kyohoon/joseon/preprocessing',
-        type=str, help='path of data pickle file (train)')
-    parser.add_argument('--save_path', default='./models', type=str, help='path of trained model')
-    parser.add_argument('--checkpoint_path', default='/HDD/kyohoon/joseon/models/12_6_12_ckpt.pt',
-        type=str, help='path of load the trained model')
-
-    parser.add_argument('--min_len', default=4, type=int)
-    parser.add_argument('--src_max_len', default=300, type=int, help='max length of the source sentence')
-    parser.add_argument('--trg_max_len', default=360, type=int, help='max length of the target sentence')
-    parser.add_argument('--pad_idx', default=0, type=int)
-    parser.add_argument('--bos_idx', default=1, type=int)
-    parser.add_argument('--eos_idx', default=2, type=int)
-
-    parser.add_argument('--d_model', default=768, type=int)
-    parser.add_argument('--d_embedding', default=256, type=int)
-    parser.add_argument('--n_head', default=12, type=int)
-    parser.add_argument('--dim_feedforward', default=3072, type=int)
-    parser.add_argument('--num_encoder_layer', default=12, type=int)
-    parser.add_argument('--num_mask_layer', default=6, type=int)
-    parser.add_argument('--num_decoder_layer', default=12, type=int)
-    parser.add_argument('--dropout', default=0.1, type=float)
-
-    parser.add_argument('--hk_batch_size', default=10, type=int, help='batch size for hanja, korean')
-    parser.add_argument('--beam_size', default=5, type=int, help='beam size')
-    parser.add_argument('--beam_alpha', default=0.7, type=float, help='beam alpha')
-    parser.add_argument('--repetition_penalty', default=0.9, type=float, help='repetition penalty')
-    parser.add_argument('--print_freq', default=30, type=int, help='print frequency')
-    args = parser.parse_args()
-    main(args)

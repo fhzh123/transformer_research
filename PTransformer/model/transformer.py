@@ -113,12 +113,12 @@ class Transformer(nn.Module):
 
         decoder_out = self.trg_output_norm(self.dropout(F.gelu(self.trg_output_linear(decoder_out))))
         decoder_out = self.trg_output_linear2(decoder_out)
-        decoder_out = decoder_out * self.x_logit_scale
+        # decoder_out = decoder_out * self.x_logit_scale
         return decoder_out
 
     @staticmethod
     def generate_square_subsequent_mask(sz, device):
-        mask = torch.tril(torch.ones(sz, sz, dtype=torch.float, device=device))
+        mask = torch.tril(torch.ones(sz, sz, dtype=torch.float, device=device))#.transpose(0, 1)
         mask = mask.masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, 0.0)
         return mask
 

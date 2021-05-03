@@ -12,6 +12,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.cuda.amp import GradScaler, autocast
+from torchtext.data import Field, Dataset, BucketIterator
 # Import custom modules
 from model.transformer import Transformer
 from model.dataset import CustomDataset
@@ -19,6 +20,7 @@ from optimizer.utils import shceduler_select, optimizer_select
 from utils import label_smoothing_loss, TqdmLoggingHandler, write_log
 
 def training(args):
+    original = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     #===================================#
@@ -38,37 +40,57 @@ def training(args):
 
     # 1) Data open
     write_log(logger, "Load data...")
-    gc.disable()
-    with open(os.path.join(args.preprocess_path, 'processed.pkl'), 'rb') as f:
-        data_ = pickle.load(f)
-        train_src_indices = data_['train_src_indices']
-        valid_src_indices = data_['valid_src_indices']
-        train_trg_indices = data_['train_trg_indices']
-        valid_trg_indices = data_['valid_trg_indices']
-        src_word2id = data_['src_word2id']
-        trg_word2id = data_['trg_word2id']
-        src_vocab_num = len(src_word2id)
-        trg_vocab_num = len(trg_word2id)
-        del data_
-    gc.enable()
-    write_log(logger, "Finished loading data!")
+    if original:
+        gc.disable()
+        with open(os.path.join(args.preprocess_path, 'processed.pkl'), 'rb') as f:
+            data_ = pickle.load(f)
+            train_src_indices = data_['train_src_indices']
+            valid_src_indices = data_['valid_src_indices']
+            train_trg_indices = data_['train_trg_indices']
+            valid_trg_indices = data_['valid_trg_indices']
+            src_word2id = data_['src_word2id']
+            trg_word2id = data_['trg_word2id']
+            src_vocab_num = len(src_word2id)
+            trg_vocab_num = len(trg_word2id)
+            del data_
+        gc.enable()
+        write_log(logger, "Finished loading data!")
 
-    # 2) Dataloader setting
-    dataset_dict = {
-        'train': CustomDataset(train_src_indices, train_trg_indices, 
-                               min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len),
-        'valid': CustomDataset(valid_src_indices, valid_trg_indices,
-                               min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len),
-    }
-    dataloader_dict = {
-        'train': DataLoader(dataset_dict['train'], drop_last=True,
-                            batch_size=args.batch_size, shuffle=True, pin_memory=True,
-                            num_workers=args.num_workers),
-        'valid': DataLoader(dataset_dict['valid'], drop_last=False,
-                            batch_size=args.batch_size, shuffle=False, pin_memory=True,
-                            num_workers=args.num_workers)
-    }
-    write_log(logger, f"Total number of trainingsets  iterations - {len(dataset_dict['train'])}, {len(dataloader_dict['train'])}")
+        # 2) Dataloader setting
+        dataset_dict = {
+            'train': CustomDataset(train_src_indices, train_trg_indices, 
+                                min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len),
+            'valid': CustomDataset(valid_src_indices, valid_trg_indices,
+                                min_len=args.min_len, src_max_len=args.src_max_len, trg_max_len=args.trg_max_len),
+        }
+        dataloader_dict = {
+            'train': DataLoader(dataset_dict['train'], drop_last=True,
+                                batch_size=args.batch_size, shuffle=True, pin_memory=True,
+                                num_workers=args.num_workers),
+            'valid': DataLoader(dataset_dict['valid'], drop_last=False,
+                                batch_size=args.batch_size, shuffle=False, pin_memory=True,
+                                num_workers=args.num_workers)
+        }
+        write_log(logger, f"Total number of trainingsets  iterations - {len(dataset_dict['train'])}, {len(dataloader_dict['train'])}")
+    else:
+        write_log(logger, "We're in TEST MODE")
+        import dill
+        data = dill.load(open('/home/kyohoon1/git_works/attention-is-all-you-need-pytorch/m30k_deen_shr.pkl', 'rb'))
+
+        args.src_max_len = data['settings'].max_len
+        args.trg_max_len = data['settings'].max_len
+
+        src_vocab_num = len(data['vocab']['src'].vocab)
+        trg_vocab_num = len(data['vocab']['trg'].vocab)
+
+        fields = {'src': data['vocab']['src'], 'trg':data['vocab']['trg']}
+
+        train = Dataset(examples=data['train'], fields=fields)
+        val = Dataset(examples=data['valid'], fields=fields)
+
+        dataloader_dict = dict()
+        dataloader_dict['train'] = BucketIterator(train, batch_size=args.batch_size, device=device, train=True)
+        dataloader_dict['valid'] = BucketIterator(val, batch_size=args.batch_size, device=device)
 
     #===================================#
     #===========Train setting===========#
@@ -89,7 +111,8 @@ def training(args):
                         parallel=args.parallel)
     model.train()
     model = model.to(device)
-    tgt_mask = model.generate_square_subsequent_mask(args.trg_max_len - 1, device)
+    if original:
+        tgt_mask = model.generate_square_subsequent_mask(args.trg_max_len - 1, device)
 
     # 2) Optimizer & Learning rate scheduler setting
     optimizer = optimizer_select(model, args)
@@ -126,11 +149,20 @@ def training(args):
                 val_loss = 0
                 val_acc = 0
                 model.eval()
-            for i, (src, trg) in enumerate(tqdm(dataloader_dict[phase])):
+            # Should fix to batch_ -> (src, trg)
+            for i, (src, trg) in enumerate(tqdm(dataloader_dict[phase], bar_format='{l_bar}{bar:30}{r_bar}{bar:-5b}')):
+
+                # Optimizer setting
+                optimizer.zero_grad(set_to_none=True)
 
                 # Input, output setting
-                src = src.to(device, non_blocking=True)
-                trg = trg.to(device, non_blocking=True)
+                if original:
+                    src = src.to(device, non_blocking=True)
+                    trg = trg.to(device, non_blocking=True)
+                else:
+                    src = batch_.src.transpose(0, 1).to(device, non_blocking=True)
+                    trg = batch_.trg.transpose(0, 1).to(device, non_blocking=True)
+                    tgt_mask = model.generate_square_subsequent_mask(trg.size(1) - 1, device)
 
                 trg_sequences_target = trg[:, 1:]
                 non_pad = trg_sequences_target != args.pad_id
@@ -139,9 +171,6 @@ def training(args):
                 # Train
                 if phase == 'train':
 
-                    # Optimizer setting
-                    optimizer.zero_grad(set_to_none=True)
-
                     # Loss calculate
                     with autocast():
                         predicted = model(src, trg[:, :-1], tgt_mask, non_pad_position=non_pad)
@@ -149,6 +178,7 @@ def training(args):
                         loss = label_smoothing_loss(predicted, trg_sequences_target, args.pad_id)
 
                     scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
                     clip_grad_norm_(model.parameters(), args.clip_grad_norm)
                     scaler.step(optimizer)
                     scaler.update()

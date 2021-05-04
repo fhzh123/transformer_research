@@ -3,8 +3,6 @@ import time
 import argparse
 
 # Import custom modules
-from preprocessing import preprocessing
-from augmenting import augmenting
 from train import training
 # from test import testing
 
@@ -12,9 +10,9 @@ def main(args):
     # Time setting
     total_start_time = time.time()
 
-    preprocessing
-    if args.preprocessing:
-        preprocessing(args)
+    # preprocessing
+    # if args.preprocessing:
+    #     preprocessing(args)
 
     # training
     if args.training:

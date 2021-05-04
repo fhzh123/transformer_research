@@ -199,7 +199,7 @@ def training(args):
                     best_val_acc = val_acc
                     best_epoch = epoch
                 else:
-                    else_log = f'Still {best_epoch} epoch accuracy({round(best_val_acc.item()*100, 2)})%% is better...'
+                    else_log = f'Still {best_epoch} epoch accuracy({round(best_val_acc.item()*100, 2)})% is better...'
                     write_log(logger, else_log)
 
     # 3) Print results

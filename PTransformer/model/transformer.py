@@ -24,9 +24,11 @@ class Transformer(nn.Module):
         self.trg_max_len = trg_max_len
         
         # Parallel Transformer setting
-        self.parallel = parallel
-        self.num_common_layer = num_common_layer
-        self.num_encoder_nonparallel = num_encoder_layer - num_common_layer
+        if parallel:
+            assert num_encoder_layer == num_encoder_layer
+            self.parallel = parallel
+            self.num_common_layer = num_common_layer
+            self.num_encoder_nonparallel = num_encoder_layer - num_common_layer
 
         # Dropout setting
         self.dropout = nn.Dropout(dropout)
@@ -78,21 +80,9 @@ class Transformer(nn.Module):
 
         # Parallel Transformer
         if self.parallel:
-            # [Non-parallel] Encoder
-            for encoder in self.encoders[:self.num_encoder_nonparallel+1]:
+            for encoder, decoder in zip(self.encoders, self.decoders):
                 encoder_out = encoder(encoder_out, src_key_padding_mask=src_key_padding_mask)
-
-            # [Parallel] Encoder -> Decoder
-            for encoder, decoder in zip(
-                    self.encoders[self.num_encoder_nonparallel+1:],
-                    self.decoders[:self.num_common_layer-1]):
                 decoder_out = decoder(decoder_out, encoder_out, tgt_mask=tgt_mask,
-                    memory_key_padding_mask=src_key_padding_mask, tgt_key_padding_mask=tgt_key_padding_mask)
-                encoder_out = encoder(encoder_out, src_key_padding_mask=src_key_padding_mask)
-
-            # [Non-parallel] Decoder
-            for decoder in self.decoders[self.num_common_layer-1:]:
-                decoder_out = decoder(decoder_out, encoder_out, 
                     memory_key_padding_mask=src_key_padding_mask, tgt_key_padding_mask=tgt_key_padding_mask)
 
         # Non-parallel Transformer

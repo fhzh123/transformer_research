@@ -83,7 +83,7 @@ def testing(args):
     # loda model
     model = model.to(device)
     model.load_state_dict(torch.load('checkpoint.pth.tar', map_location=device)['model'])
-    model.eval()
+    model = model.eval()
 
     # load sentencepiece model
     write_log(logger, "Load SentencePiece model")
@@ -113,6 +113,7 @@ def testing(args):
             # Device setting
             src_sequences = src_sequences.to(device)
             label_list.extend(trg_sequences.tolist())
+            src_seq_size = src_sequences.size(0)
             encoder_out_dict = defaultdict(list)
 
             # Encoding
@@ -120,19 +121,26 @@ def testing(args):
             src_key_padding_mask = (src_sequences == model.pad_idx) # (batch_size, src_seq)
             if args.parallel:
                 for i in range(len(model.encoders)):
-                    encoder_out_dict[i] = model.encoders[i](encoder_out, src_key_padding_mask=src_key_padding_mask) # (src_seq, batch_size, d_model)
+                    encoder_out_dict[i] = model.encoders[i](encoder_out, 
+                                    src_key_padding_mask=src_key_padding_mask) # (src_seq, batch_size, d_model)
             else:
                 for i in range(len(model.encoders)):
                     encoder_out = model.encoders[i](encoder_out, 
                                     src_key_padding_mask=src_key_padding_mask) # (src_seq, batch_size, d_model)
 
             # Expanding
-            src_key_padding_mask = src_key_padding_mask.view(args.batch_size, 1, -1).repeat(1, k, 1).view(-1, src_key_padding_mask.size(1)) # (batch_size * k, src_seq)
+            src_key_padding_mask = src_key_padding_mask.view(args.batch_size, 1, -1)
+            src_key_padding_mask = src_key_padding_mask.repeat(1, k, 1)
+            src_key_padding_mask = src_key_padding_mask.view(-1, src_seq_size)
             if args.parallel:
                 for i in encoder_out_dict:
-                    encoder_out_dict[i] = encoder_out_dict[i].view(-1, args.batch_size, 1, args.d_model).repeat(1, 1, k, 1).view(encoder_out.size(0), -1, args.d_model) # (src_seq, batch_size * k, d_model)
+                    encoder_out_dict[i] = encoder_out_dict[i].view(-1, args.batch_size, 1, args.d_model)
+                    encoder_out_dict[i] = encoder_out_dict[i].repeat(1, 1, k, 1)
+                    encoder_out_dict[i] = encoder_out_dict[i].view(src_seq_size, -1, args.d_model)
             else:
-                encoder_out = encoder_out.view(-1, args.batch_size, 1, args.d_model).repeat(1, 1, k, 1).view(encoder_out.size(0), -1, args.d_model) # (src_seq, batch_size * k, d_model)
+                encoder_out = encoder_out.view(-1, args.batch_size, 1, args.d_model)
+                encoder_out = encoder_out.repeat(1, 1, k, 1)
+                encoder_out = encoder_out.view(src_seq_size, -1, args.d_model)
 
             # Scores save vector & decoding list setting
             scores_save = torch.zeros(k * args.batch_size, 1).to(device) # (batch_size * k, 1)

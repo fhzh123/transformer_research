@@ -96,8 +96,7 @@ def testing(args):
     reference_token = list()
     candidate_token = list()
 
-    k = args.beam_size
-    every_batch = torch.arange(0, k*args.batch_size, k, device=device)
+    every_batch = torch.arange(0, args.beam_size * args.batch_size, args.beam_size, device=device)
     start_time_e = time.time()
 
     # Decoding text file setting
@@ -113,7 +112,7 @@ def testing(args):
             # Device setting
             src_sequences = src_sequences.to(device)
             label_list.extend(trg_sequences.tolist())
-            src_seq_size = src_sequences.size(0)
+            src_seq_size = src_sequences.size(1)
             encoder_out_dict = defaultdict(list)
 
             # Encoding
@@ -130,27 +129,27 @@ def testing(args):
 
             # Expanding
             src_key_padding_mask = src_key_padding_mask.view(args.batch_size, 1, -1)
-            src_key_padding_mask = src_key_padding_mask.repeat(1, k, 1)
+            src_key_padding_mask = src_key_padding_mask.repeat(1, args.beam_size, 1)
             src_key_padding_mask = src_key_padding_mask.view(-1, src_seq_size)
             if args.parallel:
                 for i in encoder_out_dict:
                     encoder_out_dict[i] = encoder_out_dict[i].view(-1, args.batch_size, 1, args.d_model)
-                    encoder_out_dict[i] = encoder_out_dict[i].repeat(1, 1, k, 1)
+                    encoder_out_dict[i] = encoder_out_dict[i].repeat(1, 1, args.beam_size, 1)
                     encoder_out_dict[i] = encoder_out_dict[i].view(src_seq_size, -1, args.d_model)
             else:
                 encoder_out = encoder_out.view(-1, args.batch_size, 1, args.d_model)
-                encoder_out = encoder_out.repeat(1, 1, k, 1)
+                encoder_out = encoder_out.repeat(1, 1, args.beam_size, 1)
                 encoder_out = encoder_out.view(src_seq_size, -1, args.d_model)
 
             # Scores save vector & decoding list setting
-            scores_save = torch.zeros(k * args.batch_size, 1).to(device) # (batch_size * k, 1)
-            top_k_scores = torch.zeros(k * args.batch_size, 1).to(device) # (batch_size * k, 1)
+            scores_save = torch.zeros(args.beam_size * args.batch_size, 1).to(device) # (batch_size * k, 1)
+            top_k_scores = torch.zeros(args.beam_size * args.batch_size, 1).to(device) # (batch_size * k, 1)
             complete_seqs = defaultdict(list)
             complete_ind = set()
 
             # Decoding start token setting
             seqs = torch.tensor([[model.bos_idx]], dtype=torch.long, device=device) 
-            seqs = seqs.repeat(k*args.batch_size, 1).contiguous() # (batch_size * k, 1)
+            seqs = seqs.repeat(args.beam_size * args.batch_size, 1).contiguous() # (batch_size * k, 1)
 
             for step in range(model.trg_max_len):
                 # Decoder setting
@@ -188,19 +187,19 @@ def testing(args):
                 # Add score
                 scores = top_k_scores.expand_as(scores) + scores  # (batch_size * k, vocab_num)
                 if step == 0:
-                    scores = scores[::k] # (batch_size, vocab_num)
+                    scores = scores[::args.beam_size] # (batch_size, vocab_num)
                     scores[:, model.eos_idx] = float('-inf') # set eos token probability zero in first step
-                    top_k_scores, top_k_words = scores.topk(k, 1, True, True)  # (batch_size, k) , (batch_size, k)
+                    top_k_scores, top_k_words = scores.topk(args.beam_size, 1, True, True)  # (batch_size, k) , (batch_size, k)
                 else:
-                    top_k_scores, top_k_words = scores.view(args.batch_size, -1).topk(k, 1, True, True)
+                    top_k_scores, top_k_words = scores.view(args.batch_size, -1).topk(args.beam_size, 1, True, True)
 
                 # Previous and Next word extract
                 prev_word_inds = top_k_words // trg_vocab_num # (batch_size * k, out_seq)
                 next_word_inds = top_k_words % trg_vocab_num # (batch_size * k, out_seq)
-                top_k_scores = top_k_scores.view(args.batch_size*k, -1) # (batch_size * k, out_seq)
-                top_k_words = top_k_words.view(args.batch_size*k, -1) # (batch_size * k, out_seq)
-                seqs = seqs[prev_word_inds.view(-1) + every_batch.unsqueeze(1).repeat(1, k).view(-1)] # (batch_size * k, out_seq)
-                seqs = torch.cat([seqs, next_word_inds.view(k*args.batch_size, -1)], dim=1) # (batch_size * k, out_seq + 1)
+                top_k_scores = top_k_scores.view(args.batch_size * args.beam_size, -1) # (batch_size * k, out_seq)
+                top_k_words = top_k_words.view(args.batch_size * args.beam_size, -1) # (batch_size * k, out_seq)
+                seqs = seqs[prev_word_inds.view(-1) + every_batch.unsqueeze(1).repeat(1, args.beam_size).view(-1)] # (batch_size * k, out_seq)
+                seqs = torch.cat([seqs, next_word_inds.view(args.beam_size * args.batch_size, -1)], dim=1) # (batch_size * k, out_seq + 1)
 
                 # Find and Save Complete Sequences Score
                 if model.eos_idx in next_word_inds:
@@ -222,12 +221,12 @@ def testing(args):
                 scores_save[score_save_pos] = top_k_scores[score_save_pos]
 
             # Beam Length Normalization
-            lp = torch.tensor([len(complete_seqs[i]) for i in range(args.batch_size*k)], device=device)
-            lp = (((lp + k) ** args.beam_alpha) / ((k + 1) ** args.beam_alpha)).unsqueeze(1)
+            lp = torch.tensor([len(complete_seqs[i]) for i in range(args.batch_size * args.beam_size)], device=device)
+            lp = (((lp + args.beam_size) ** args.beam_alpha) / ((args.beam_size + 1) ** args.beam_alpha)).unsqueeze(1)
             scores_save = scores_save / lp
 
             # Predicted and Label processing
-            _, ind = scores_save.view(args.batch_size, k, -1).max(1)
+            _, ind = scores_save.view(args.batch_size, args.beam_size, -1).max(1)
             ind_expand = ind.view(-1) + every_batch
             predicted_list.extend([complete_seqs[i] for i in ind_expand.tolist()])
 

@@ -78,12 +78,16 @@ def pretraining(args):
     # 2) Model resume
     start_epoch = 0
     if args.resume:
-        checkpoint = torch.load('./checkpoint_testing.pth.tar', map_location='cpu')
+        checkpoint = torch.load('./pretrain_bert.pth.tar', map_location='cpu')
         start_epoch = checkpoint['epoch'] + 1
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
+        model = model.train()
+        model = model.to(device)
         del checkpoint
+
+
 
     #===================================#
     #=========Model Train Start=========#
@@ -97,14 +101,14 @@ def pretraining(args):
         start_time_e = time.time()
         for phase in ['train', 'valid']:
             if phase == 'train':
-                model.train()
+                model = model.train()
             if phase == 'valid':
                 print('Validation start...')
                 val_mlm_loss = 0
                 val_nsp_loss = 0
                 val_mlm_acc = 0
                 val_nsp_acc = 0
-                model.eval()
+                model = model.eval()
             for i, (masking_text, segment, text, nsp_label) in enumerate(dataloader_dict[phase]):
 
                 # Input, output setting

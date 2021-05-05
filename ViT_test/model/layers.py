@@ -35,6 +35,29 @@ class PatchEmbedding(nn.Module):
 
         return x
 
+# class PatchEmbedding(nn.Module):
+#     def __init__(self, in_channels: int = 3, patch_size: int = 16, emb_size: int = 768, img_size: int = 224):
+#         self.patch_size = patch_size
+#         super().__init__()
+#         self.projection = nn.Sequential(
+#             # break-down the image in s1 x s2 patches and flat them
+#             Rearrange('b c (h s1) (w s2) -> b (h w) (s1 s2 c)', s1=patch_size, s2=patch_size),
+#             nn.Linear(patch_size * patch_size * in_channels, emb_size)
+#         )
+#         self.cls_token = nn.Parameter(torch.randn(1,1, emb_size))
+#         self.positions = nn.Parameter(torch.randn((img_size // patch_size) **2 + 1, emb_size))
+
+        
+#     def forward(self, x: Tensor) -> Tensor:
+#         b, _, _, _ = x.shape
+#         x = self.projection(x)
+#         cls_tokens = repeat(self.cls_token, '() n e -> b n e', b=b)
+#         # prepend the cls token to the input
+#         x = torch.cat([cls_tokens, x], dim=1)
+#         # add position embedding
+#         x += self.positions
+#         return x
+
 class TransformerEncoderLayer(nn.Module):
     def __init__(self, d_model: int, self_attn: nn.Module, dim_feedforward: int = 2048, dropout: float = 0.1):
         super(TransformerEncoderLayer, self).__init__()

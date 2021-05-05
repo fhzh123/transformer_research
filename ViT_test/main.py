@@ -46,7 +46,6 @@ if __name__=='__main__':
     parser.add_argument('--augment_top_k', default=3, type=int,
                         help='Augmented size of NER_Masking; Default is 3')
     # Training setting
-    parser.add_argument('--augmentation_data_training', action='store_true')
     parser.add_argument('--num_epochs', default=10, type=int, 
                         help='Epoch count; Default is 10')
     parser.add_argument('--num_workers', default=8, type=int, 
@@ -61,8 +60,8 @@ if __name__=='__main__':
                         help='Learning rate; Default is 5e-5')
     parser.add_argument('--w_decay', default=5e-6, type=float, 
                         help='Weight decay ratio; Default is 5e-6')
-    parser.add_argument('--grad_norm', default=5, type=int, 
-                        help='Graddient clipping norm; Default is 5')
+    parser.add_argument('--grad_norm', default=10, type=int, 
+                        help='Graddient clipping norm; Default is 10')
     # Optimizer setting
     optim_list = ['AdamW', 'Adam', 'SGD']
     scheduler_list = ['constant', 'warmup', 'reduce_train', 'reduce_valid', 'lambda']

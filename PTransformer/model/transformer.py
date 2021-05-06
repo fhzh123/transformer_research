@@ -69,7 +69,6 @@ class Transformer(nn.Module):
         if emb_src_trg_weight_sharing:
             self.src_embedding.token.weight = self.trg_embedding.token.weight
             
-
     @autocast()
     def forward(self, src_input_sentence, trg_input_sentence, tgt_mask, non_pad_position=None):
         src_key_padding_mask = (src_input_sentence == self.pad_idx)
@@ -80,9 +79,17 @@ class Transformer(nn.Module):
 
         # Parallel Transformer
         if self.parallel:
-            for encoder, decoder in zip(self.encoders, self.decoders):
-                encoder_out = encoder(encoder_out, src_key_padding_mask=src_key_padding_mask)
-                decoder_out = decoder(decoder_out, encoder_out, tgt_mask=tgt_mask,
+            for i, encoder in enumerate(self.encoders):
+                if i == 0:
+                    encoder_out_cat = encoder(encoder_out, 
+                        src_key_padding_mask=src_key_padding_mask).unsqueeze(0)
+                else:
+                    encoder_out_ = encoder(encoder_out_cat[-1], 
+                        src_key_padding_mask=src_key_padding_mask).unsqueeze(0)
+                    encoder_out_cat = torch.cat((encoder_out_cat, encoder_out_), dim=0)
+
+            for i, decoder in enumerate(self.decoders):
+                decoder_out = decoder(decoder_out, encoder_out_cat[i], tgt_mask=tgt_mask,
                     memory_key_padding_mask=src_key_padding_mask, tgt_key_padding_mask=tgt_key_padding_mask)
 
         # Non-parallel Transformer
@@ -96,14 +103,13 @@ class Transformer(nn.Module):
                 decoder_out = decoder(decoder_out, encoder_out, tgt_mask=tgt_mask,
                     memory_key_padding_mask=src_key_padding_mask, tgt_key_padding_mask=tgt_key_padding_mask)
 
-
         decoder_out = decoder_out.transpose(0, 1).contiguous()
         if non_pad_position is not None:
             decoder_out = decoder_out[non_pad_position]
 
         decoder_out = self.trg_output_norm(self.dropout(F.gelu(self.trg_output_linear(decoder_out))))
         decoder_out = self.trg_output_linear2(decoder_out)
-        # decoder_out = decoder_out * self.x_logit_scale
+        decoder_out = decoder_out * self.x_logit_scale
         return decoder_out
 
     @staticmethod

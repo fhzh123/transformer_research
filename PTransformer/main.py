@@ -64,21 +64,21 @@ if __name__=='__main__':
                         help='Transformer embedding word token dimension; Default is 256')
     parser.add_argument('--n_head', default=12, type=int, 
                         help="Multihead Attention's head count; Default is 12")
-    parser.add_argument('--dim_feedforward', default=2048, type=int, 
-                        help="Feedforward network's dimension; Default is 768")
-    parser.add_argument('--dropout', default=0.5, type=float, 
-                        help="Dropout ration; Default is 0.5")
-    parser.add_argument('--embedding_dropout', default=0.3, type=float, 
-                        help="Embedding dropout ration; Default is 0.3")
-    parser.add_argument('--num_common_layer', default=6, type=int, 
-                        help="In PTransformer, parallel layer count; Default is 6")
-    parser.add_argument('--num_encoder_layer', default=6, type=int, 
-                        help="Number of encoder layers; Default is 6")
-    parser.add_argument('--num_decoder_layer', default=6, type=int, 
-                        help="Number of decoder layers; Default is 6")
+    parser.add_argument('--dim_feedforward', default=3120, type=int, 
+                        help="Feedforward network's dimension; Default is 3120")
+    parser.add_argument('--dropout', default=0.3, type=float, 
+                        help="Dropout ration; Default is 0.3")
+    parser.add_argument('--embedding_dropout', default=0.15, type=float, 
+                        help="Embedding dropout ration; Default is 0.15")
+    parser.add_argument('--num_common_layer', default=8, type=int, 
+                        help="In PTransformer, parallel layer count; Default is 8")
+    parser.add_argument('--num_encoder_layer', default=8, type=int, 
+                        help="Number of encoder layers; Default is 8")
+    parser.add_argument('--num_decoder_layer', default=8, type=int, 
+                        help="Number of decoder layers; Default is 8")
     parser.add_argument('--trg_emb_prj_weight_sharing', default=False, type=str2bool, 
                         help="Share weight between target embedding & last dense layer; Default is False")
-    parser.add_argument('--emb_src_trg_weight_sharing', default=False, type=str2bool, 
+    parser.add_argument('--emb_src_trg_weight_sharing', default=True, type=str2bool, 
                         help="Share weight between source and target embedding; Default is False")
     parser.add_argument('--clip_grad_norm', default=5, type=int, 
                         help='Graddient clipping norm; Default is 5')

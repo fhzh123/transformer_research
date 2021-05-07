@@ -139,12 +139,13 @@ def training(args):
 
     # 1) Model initiating
     write_log(logger, "Instantiating models...")
-    model = Vision_Transformer(n_classes=10, img_size=32, patch_size=4)
+    model = Vision_Transformer(n_classes=10, img_size=32, patch_size=16)
     model.train()
     model = model.to(device)
 
     # 2) Optimizer setting
-    optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
+    # optimizer = AdamW(model.parameters(), lr=args.lr, eps=1e-8)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, eps=1e-8)
     scheduler = shceduler_select(optimizer, dataloader_dict, args)
     scaler = GradScaler()
 
@@ -189,7 +190,7 @@ def training(args):
             best_val_acc = val_acc
             best_epoch = epoch
         else:
-            else_log = f'Still {best_epoch} epoch accuracy({round(best_val_acc*100, 2)})% is better...'
+            else_log = f'Still {best_epoch} epoch accuracy({round(best_val_acc, 2)})% is better...'
             write_log(logger, else_log)
 
     # 3)

@@ -22,11 +22,11 @@ class Transformer(nn.Module):
         self.eos_idx = eos_idx
         self.src_max_len = src_max_len
         self.trg_max_len = trg_max_len
-        
+
         # Parallel Transformer setting
-        if parallel:
+        self.parallel = parallel
+        if self.parallel:
             assert num_encoder_layer == num_encoder_layer
-            self.parallel = parallel
             self.num_common_layer = num_common_layer
             self.num_encoder_nonparallel = num_encoder_layer - num_common_layer
 
@@ -36,7 +36,7 @@ class Transformer(nn.Module):
         # Source embedding part
         self.src_embedding = TransformerEmbedding(src_vocab_num, d_model, d_embedding, 
             pad_idx=self.pad_idx, max_len=self.src_max_len, dropout=embedding_dropout)
-        
+
         # Target embedding part
         self.trg_embedding = TransformerEmbedding(trg_vocab_num, d_model, d_embedding,
             pad_idx=self.pad_idx, max_len=self.trg_max_len, dropout=embedding_dropout)

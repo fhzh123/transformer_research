@@ -195,7 +195,7 @@ def training(args):
                         'optimizer': optimizer.state_dict(),
                         'scheduler': scheduler.state_dict(),
                         'scaler': scaler.state_dict()
-                    }, f'checkpoint.pth.tar')
+                    }, f'checkpoint_{args.parallel}.pth.tar')
                     best_val_acc = val_acc
                     best_epoch = epoch
                 else:
